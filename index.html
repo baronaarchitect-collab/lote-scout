@@ -84,6 +84,13 @@
   .toast.show{opacity:1}
   .hint{font-size:12px;color:var(--muted);line-height:1.4;margin-top:4px}
   .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--panel2);color:var(--text)}
+  .an-item{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13.5px;padding:9px 8px;border-bottom:1px solid var(--border);cursor:pointer;border-radius:8px}
+  .an-item:hover,.an-item:active{background:var(--panel2)}
+  .an-item .d{color:var(--muted);font-weight:700;white-space:nowrap;display:flex;align-items:center;gap:6px}
+  .an-item .d::after{content:'›';font-size:18px;color:var(--accent2)}
+  .backchip{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:1500;background:var(--accent);color:#fff;border:0;padding:10px 18px;border-radius:22px;font-weight:650;font-size:13.5px;box-shadow:0 6px 22px rgba(0,0,0,.55)}
+  .rentbtns{display:flex;gap:8px;flex-wrap:wrap}
+  .rentbtns .btn{flex:1;min-width:96px}
 </style>
 </head>
 <body>
@@ -131,6 +138,15 @@
       <div id="dPhotoWrap"></div>
       <div class="callrow" id="dCallRow"></div>
       <button class="btn" id="dAnalyze" style="width:100%;margin-bottom:12px">🔍 Analizar zona (equipamientos a 5 km)</button>
+      <div class="field"><label>💰 Rentabilidad y comparables (por ubicación)</label>
+        <div class="rentbtns">
+          <button class="btn sm" id="rAirbnb">Airbnb</button>
+          <button class="btn sm" id="rBooking">Booking</button>
+          <button class="btn sm" id="rFinca">Finca Raíz</button>
+          <button class="btn sm" id="rMetro">Metro Cuadrado</button>
+        </div>
+        <div class="hint">Abren el portal filtrado por la ubicación del lote para comparar precios/rentas. No es una API en vivo (esos servicios son cerrados/de pago).</div>
+      </div>
       <div class="field"><label>Teléfono de la valla</label>
         <div class="row" style="gap:8px">
           <input id="dPhone" inputmode="tel" placeholder="Ej: 300 123 4567" style="flex:2">
@@ -183,6 +199,7 @@
   </div>
 </div>
 
+<button class="backchip hidden" id="backToAnalysis">← Volver al análisis</button>
 <div class="toast" id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -290,13 +307,14 @@ async function FirebaseBackend(){
 }
 
 /* ===================== Estado & UI ===================== */
-let map,markers,analysisLayer,me=null,profile={},lots=[],current=null,authMode='login';
+let map,markers,analysisLayer,focusLayer,me=null,profile={},lots=[],current=null,authMode='login';
 
 function initMap(){
   map=L.map('map',{zoomControl:true}).setView(CITIES[DEFAULT_CITY].c,CITIES[DEFAULT_CITY].z);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap'}).addTo(map);
   markers=L.layerGroup().addTo(map);
   analysisLayer=L.layerGroup().addTo(map);
+  focusLayer=L.layerGroup().addTo(map);
   map.on('click',e=>{ if(current && !$('detailModal').classList.contains('hidden')){
     $('dLat').value=e.latlng.lat.toFixed(7);$('dLon').value=e.latlng.lng.toFixed(7);
     toast('Coordenada fijada — recuerda Guardar');
@@ -363,7 +381,8 @@ function openDetail(id){
   $('detailModal').classList.remove('hidden');
   if(current.coords&&current.coords.lat!=null)map.setView([current.coords.lat,current.coords.lon],17);
 }
-function closeDetail(){$('detailModal').classList.add('hidden');current=null;if(analysisLayer)analysisLayer.clearLayers();}
+function closeDetail(){$('detailModal').classList.add('hidden');current=null;
+  if(analysisLayer)analysisLayer.clearLayers();if(focusLayer)focusLayer.clearLayers();$('backToAnalysis').classList.add('hidden');}
 function renderCallRow(){
   const d=normPhone($('dPhone').value);const row=$('dCallRow');
   if(!d){row.innerHTML='';return;}
@@ -493,7 +512,7 @@ function poiQuery(lat,lon){return `[out:json][timeout:25];(
 );out center 400;`;}
 function roadQuery(lat,lon){return `[out:json][timeout:25];
  (way[highway~"^(motorway|trunk|primary|secondary)$"](around:2500,${lat},${lon}););out geom 250;`;}
-function minGeomDist(lat,lon,geom){let d=Infinity;(geom||[]).forEach(p=>{const dd=haversine(lat,lon,p.lat,p.lon);if(dd<d)d=dd;});return d;}
+function nearestGeom(lat,lon,geom){let b={dist:Infinity,lat:null,lon:null};(geom||[]).forEach(p=>{const dd=haversine(lat,lon,p.lat,p.lon);if(dd<b.dist)b={dist:dd,lat:p.lat,lon:p.lon};});return b;}
 
 function openAnalysis(html){$('anBody').innerHTML=html;$('analysisModal').classList.remove('hidden');}
 async function analyzeZone(){
@@ -508,38 +527,70 @@ async function analyzeZone(){
       items.push({name:(e.tags&&e.tags.name)||k.cat,key:k.key,cat:k.cat,icon:k.icon,color:k.color,lat:c.lat,lon:c.lon,dist:haversine(lat,lon,c.lat,c.lon)});});
     // vías: distancia mínima a la geometría; dedup por nombre quedándose con la más cercana
     const roadMap={};
-    roads.forEach(w=>{const d=minGeomDist(lat,lon,w.geometry);if(!isFinite(d))return;
+    roads.forEach(w=>{const ng=nearestGeom(lat,lon,w.geometry);if(!isFinite(ng.dist))return;
       const nm=(w.tags&&(w.tags.name||w.tags.ref))||('Vía '+(w.tags&&w.tags.highway));
       const key=nm+'|'+(w.tags&&w.tags.highway);
-      if(!roadMap[key]||d<roadMap[key].dist)roadMap[key]={name:nm,type:w.tags&&w.tags.highway,dist:d};});
+      if(!roadMap[key]||ng.dist<roadMap[key].dist)roadMap[key]={name:nm,type:w.tags&&w.tags.highway,dist:ng.dist,lat:ng.lat,lon:ng.lon};});
     const roadItems=Object.values(roadMap).sort((a,b)=>a.dist-b.dist);
     renderAnalysis(warn,items,roadItems);
     plotAnalysis(items);
   }catch(e){console.error(e);openAnalysis(warn+'<div style="padding:20px;color:var(--warn)">No se pudo consultar OpenStreetMap ahora (servidor ocupado). Intenta de nuevo en un momento.</div>');}
 }
 const ROAD_LABEL={motorway:'Autopista',trunk:'Vía troncal',primary:'Vía principal',secondary:'Vía secundaria'};
+function anRow(prefix,name,sub,dist,lat,lon,icon){
+  return `<div class="an-item" data-lat="${lat}" data-lon="${lon}" data-name="${esc(name)}" data-dist="${Math.round(dist)}" data-icon="${icon||''}">
+    <span>${prefix?prefix+' ':''}${esc(name)}${sub?` <span class="hint">${esc(sub)}</span>`:''}</span><span class="d">${fmtDist(dist)}</span></div>`;
+}
 function renderAnalysis(warn,items,roads){
   const byCat={};items.forEach(i=>{(byCat[i.key]=byCat[i.key]||{cat:i.cat,icon:i.icon,list:[]}).list.push(i);});
   const order=['educacion','salud','comercio','cultura','recreacion','transporte','construccion'];
   let html=warn;
-  html+=`<div class="hint" style="margin-bottom:12px">Radio de 5 km alrededor del lote · datos de OpenStreetMap</div>`;
-  // Vías principales
-  html+=`<div style="font-weight:700;margin:4px 0 6px">🛣️ Vías principales</div>`;
+  html+=`<div class="hint" style="margin-bottom:10px">Radio de 5 km · datos de OpenStreetMap. <b>Toca cualquier lugar</b> para verlo en el mapa junto a tu foto.</div>`;
+  html+=`<div style="font-weight:700;margin:4px 0 4px">🛣️ Vías principales</div>`;
   if(roads.length){
-    html+=roads.slice(0,4).map(r=>`<div style="display:flex;justify-content:space-between;font-size:13.5px;padding:4px 0;border-bottom:1px solid var(--border)">
-      <span>${esc(r.name)} <span class="hint">${ROAD_LABEL[r.type]||r.type}</span></span><b>${fmtDist(r.dist)}</b></div>`).join('');
+    html+=roads.slice(0,4).filter(r=>r.lat!=null).map(r=>anRow('🛣️',r.name,ROAD_LABEL[r.type]||r.type,r.dist,r.lat,r.lon,'🛣️')).join('');
   } else html+=`<div class="hint">No se hallaron vías principales cercanas.</div>`;
-  // Equipamientos por categoría
   order.forEach(k=>{const g=byCat[k];if(!g)return;
     const list=g.list.sort((a,b)=>a.dist-b.dist);
-    html+=`<div style="font-weight:700;margin:16px 0 6px">${g.icon} ${g.cat} <span class="hint">(${list.length})</span></div>`;
-    html+=list.slice(0,6).map(i=>`<div style="display:flex;justify-content:space-between;font-size:13.5px;padding:4px 0;border-bottom:1px solid var(--border)">
-      <span>${esc(i.name)}</span><b>${fmtDist(i.dist)}</b></div>`).join('');
+    html+=`<div style="font-weight:700;margin:16px 0 4px">${g.icon} ${g.cat} <span class="hint">(${list.length})</span></div>`;
+    html+=list.slice(0,6).map(i=>anRow('',i.name,'',i.dist,i.lat,i.lon,g.icon)).join('');
     if(list.length>6)html+=`<div class="hint" style="margin-top:4px">… y ${list.length-6} más</div>`;
   });
   if(!items.length)html+=`<div class="hint" style="margin-top:12px">No se encontraron equipamientos en 5 km (¿zona rural o sin datos en OSM?).</div>`;
   $('anBody').innerHTML=html;
+  $('anBody').querySelectorAll('.an-item').forEach(el=>el.onclick=()=>
+    focusOnMap(+el.dataset.lat,+el.dataset.lon,el.dataset.name,+el.dataset.dist,el.dataset.icon));
 }
+function focusOnMap(lat,lon,name,dist,icon){
+  if(!current||!current.coords)return;
+  $('analysisModal').classList.add('hidden');$('detailModal').classList.add('hidden');
+  focusLayer.clearLayers();
+  const lotLL=[current.coords.lat,current.coords.lon],poiLL=[lat,lon];
+  L.polyline([lotLL,poiLL],{color:'#3aa0ff',weight:3,dashArray:'6 7'}).addTo(focusLayer);
+  L.circleMarker(lotLL,{radius:8,color:'#fff',fillColor:'#2f9e6e',fillOpacity:1,weight:2}).addTo(focusLayer)
+    .bindTooltip('📷 Tu foto',{permanent:true,direction:'bottom'}).openTooltip();
+  L.circleMarker(poiLL,{radius:9,color:'#fff',fillColor:'#e0a83b',fillOpacity:1,weight:2}).addTo(focusLayer)
+    .bindTooltip(`${icon||''} ${name} · ${fmtDist(dist)}`,{permanent:true,direction:'top'}).openTooltip();
+  try{map.fitBounds(L.latLngBounds([lotLL,poiLL]).pad(0.4),{maxZoom:17});}catch(e){}
+  $('backToAnalysis').classList.remove('hidden');
+  setTimeout(()=>map.invalidateSize(),120);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function backToAnalysis(){focusLayer.clearLayers();$('backToAnalysis').classList.add('hidden');$('analysisModal').classList.remove('hidden');}
+
+/* ---- Rentabilidad / comparables (enlaces por ubicación) ---- */
+function slugCity(c){return (c||'bogota').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');}
+function rentLinks(){
+  const lat=current.coords.lat,lon=current.coords.lon,city=slugCity(profile.city);
+  const oper=(($('dOper').value||'Venta').toLowerCase()==='renta')?'arriendo':'venta';const d=0.012;
+  return {
+    airbnb:`https://www.airbnb.com/s/homes?search_type=user_map_move&search_by_map=true&zoom=14&ne_lat=${(lat+d).toFixed(5)}&ne_lng=${(lon+d).toFixed(5)}&sw_lat=${(lat-d).toFixed(5)}&sw_lng=${(lon-d).toFixed(5)}`,
+    booking:`https://www.booking.com/searchresults.html?latitude=${lat.toFixed(5)}&longitude=${lon.toFixed(5)}`,
+    fincaraiz:`https://www.fincaraiz.com.co/${oper}/${city}`,
+    metro:`https://www.metrocuadrado.com/${oper}/${city}/`
+  };
+}
+function openRent(k){if(!current||!current.coords){toast('Ubica el lote primero');return;}window.open(rentLinks()[k],'_blank');}
 function plotAnalysis(items){
   analysisLayer.clearLayers();
   items.sort((a,b)=>a.dist-b.dist).slice(0,80).forEach(i=>{
@@ -573,7 +624,12 @@ function plotAnalysis(items){
   $('dSave').onclick=saveDetail;
   $('dDelete').onclick=deleteDetail;
   $('dAnalyze').onclick=analyzeZone;
-  $('anClose').onclick=()=>{$('analysisModal').classList.add('hidden');analysisLayer.clearLayers();};
+  $('anClose').onclick=()=>{$('analysisModal').classList.add('hidden');analysisLayer.clearLayers();focusLayer.clearLayers();$('backToAnalysis').classList.add('hidden');};
+  $('backToAnalysis').onclick=backToAnalysis;
+  $('rAirbnb').onclick=()=>openRent('airbnb');
+  $('rBooking').onclick=()=>openRent('booking');
+  $('rFinca').onclick=()=>openRent('fincaraiz');
+  $('rMetro').onclick=()=>openRent('metro');
   $('dGcal').onclick=()=>{const u=gcalLink();if(!u){toast('Escribe fecha y hora de la visita');return;}window.open(u,'_blank');};
   // sesión
   Backend.onAuth(u=>{ me=u; if(u) enterApp(); else showAuth(); });
