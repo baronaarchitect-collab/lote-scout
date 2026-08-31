@@ -130,6 +130,7 @@
     <div class="bd">
       <div id="dPhotoWrap"></div>
       <div class="callrow" id="dCallRow"></div>
+      <button class="btn" id="dAnalyze" style="width:100%;margin-bottom:12px">🔍 Analizar zona (equipamientos a 5 km)</button>
       <div class="field"><label>Teléfono de la valla</label>
         <div class="row" style="gap:8px">
           <input id="dPhone" inputmode="tel" placeholder="Ej: 300 123 4567" style="flex:2">
@@ -174,6 +175,14 @@
   </div>
 </div>
 
+<!-- ================= ANALYSIS ================= -->
+<div id="analysisModal" class="modal hidden">
+  <div class="sheet">
+    <div class="hd"><h2 id="anTitle">Análisis de la zona</h2><button class="iconbtn" id="anClose">✕</button></div>
+    <div class="bd" id="anBody"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -201,6 +210,18 @@ function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>'
 function normPhone(raw){if(!raw)return null;let d=(''+raw).replace(/[^\d]/g,'');if(!d)return null;
   if(d.length===10&&d[0]==='3')d='57'+d;else if(d.length===7||d.length===8)d='572'+d;return d;}
 function fileToDataURL(f){return new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.readAsDataURL(f);});}
+// Comprime la foto (redimensiona + JPEG) para guardarla liviana en Firestore/IndexedDB (sin Storage de pago)
+function compressImage(file,maxDim=1100,quality=0.62){
+  return new Promise((res)=>{
+    const url=URL.createObjectURL(file);const img=new Image();
+    img.onload=()=>{let w=img.width,h=img.height;
+      if(Math.max(w,h)>maxDim){const s=maxDim/Math.max(w,h);w=Math.round(w*s);h=Math.round(h*s);}
+      const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h);URL.revokeObjectURL(url);
+      res(cv.toDataURL('image/jpeg',quality));};
+    img.onerror=()=>{URL.revokeObjectURL(url);res(null);};
+    img.src=url;});
+}
 function localDT(d){d=d||new Date();const p=n=>(''+n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;}
 
 /* ===================== Backend abstracto (Firebase | Local) ===================== */
@@ -231,8 +252,8 @@ function LocalBackend(){
     async getProfile(){return JSON.parse(LS.getItem('ls_profile_'+cur)||'{}');},
     async setProfile(p){const cur0=await this.getProfile();LS.setItem('ls_profile_'+cur,JSON.stringify({...cur0,...p}));},
     async listLots(){return (await all()).filter(l=>l.uid===cur).sort((a,b)=>b.createdAt-a.createdAt);},
-    async uploadPhoto(file){return await fileToDataURL(file);},
-    async createLot(fields,file){const id=uid();let photoURL=null;if(file)photoURL=await fileToDataURL(file);
+    async uploadPhoto(file){return await compressImage(file);},
+    async createLot(fields,file){const id=uid();let photoURL=null;if(file)photoURL=await compressImage(file);
       const lot={id,uid:cur,createdAt:Date.now(),photoURL,...fields};await put(lot);return lot;},
     async updateLot(id,fields){const d=await db();const cur0=await new Promise((res)=>{const t=d.transaction('lots').objectStore('lots').get(id);t.onsuccess=()=>res(t.result);});
       const merged={...cur0,...fields};await put(merged);return merged;},
@@ -245,8 +266,7 @@ async function FirebaseBackend(){
   const {initializeApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
   const A=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
   const F=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-  const S=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js');
-  const app=initializeApp(cfg);const auth=A.getAuth(app);const db=F.getFirestore(app);const st=S.getStorage(app);
+  const app=initializeApp(cfg);const auth=A.getAuth(app);const db=F.getFirestore(app);
   let U=null;
   return {
     demo:false,
@@ -260,11 +280,8 @@ async function FirebaseBackend(){
     async listLots(){const q=F.query(F.collection(db,'users',U.uid,'lots'),F.orderBy('createdAt','desc'));
       const s=await F.getDocs(q);return s.docs.map(d=>({id:d.id,...d.data()}));},
     async createLot(fields,file){
-      const ref=await F.addDoc(F.collection(db,'users',U.uid,'lots'),{createdAt:Date.now(),...fields});
-      let photoURL=null;
-      if(file){const sref=S.ref(st,`users/${U.uid}/${ref.id}/${Date.now()}_${file.name}`);
-        await S.uploadBytes(sref,file);photoURL=await S.getDownloadURL(sref);
-        await F.updateDoc(ref,{photoURL});}
+      let photoURL=null; if(file)photoURL=await compressImage(file);   // foto comprimida en Firestore (sin Storage)
+      const ref=await F.addDoc(F.collection(db,'users',U.uid,'lots'),{createdAt:Date.now(),photoURL,...fields});
       return {id:ref.id,createdAt:Date.now(),photoURL,...fields};
     },
     async updateLot(id,fields){await F.updateDoc(F.doc(db,'users',U.uid,'lots',id),fields);return {id,...fields};},
@@ -273,12 +290,13 @@ async function FirebaseBackend(){
 }
 
 /* ===================== Estado & UI ===================== */
-let map,markers,me=null,profile={},lots=[],current=null,authMode='login';
+let map,markers,analysisLayer,me=null,profile={},lots=[],current=null,authMode='login';
 
 function initMap(){
   map=L.map('map',{zoomControl:true}).setView(CITIES[DEFAULT_CITY].c,CITIES[DEFAULT_CITY].z);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap'}).addTo(map);
   markers=L.layerGroup().addTo(map);
+  analysisLayer=L.layerGroup().addTo(map);
   map.on('click',e=>{ if(current && !$('detailModal').classList.contains('hidden')){
     $('dLat').value=e.latlng.lat.toFixed(7);$('dLon').value=e.latlng.lng.toFixed(7);
     toast('Coordenada fijada — recuerda Guardar');
@@ -345,7 +363,7 @@ function openDetail(id){
   $('detailModal').classList.remove('hidden');
   if(current.coords&&current.coords.lat!=null)map.setView([current.coords.lat,current.coords.lon],17);
 }
-function closeDetail(){$('detailModal').classList.add('hidden');current=null;}
+function closeDetail(){$('detailModal').classList.add('hidden');current=null;if(analysisLayer)analysisLayer.clearLayers();}
 function renderCallRow(){
   const d=normPhone($('dPhone').value);const row=$('dCallRow');
   if(!d){row.innerHTML='';return;}
@@ -433,6 +451,103 @@ function friendly(e){const m=(e&&e.message||''+e);
   if(/invalid-email/.test(m))return 'Correo inválido.';
   return m.replace(/^Error:\s*/,'');}
 
+/* ===================== Análisis de zona (OpenStreetMap / Overpass) ===================== */
+const OVERPASS_MIRRORS=['https://overpass-api.de/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass.private.coffee/api/interpreter'];
+function haversine(la1,lo1,la2,lo2){const R=6371000,r=x=>x*Math.PI/180;const dLa=r(la2-la1),dLo=r(lo2-lo1);
+  const s=Math.sin(dLa/2)**2+Math.cos(r(la1))*Math.cos(r(la2))*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(s));}
+function fmtDist(m){return m<1000?Math.round(m)+' m':(m/1000).toFixed(2)+' km';}
+function elCenter(e){if(e.type==='node')return{lat:e.lat,lon:e.lon};if(e.center)return{lat:e.center.lat,lon:e.center.lon};return null;}
+function catOf(t){
+  t=t||{};const a=t.amenity,s=t.shop,l=t.leisure;
+  if(t.landuse==='construction'||t.building==='construction') return {key:'construccion',cat:'Proyectos / construcción',icon:'🏗️',color:'#e0a83b'};
+  if(['school','kindergarten','college','university'].includes(a)) return {key:'educacion',cat:'Educación',icon:'🎓',color:'#3aa0ff'};
+  if(['hospital','clinic','pharmacy','doctors'].includes(a)) return {key:'salud',cat:'Salud',icon:'🏥',color:'#e5534b'};
+  if(['supermarket','mall','convenience','department_store'].includes(s)||a==='marketplace') return {key:'comercio',cat:'Comercio',icon:'🛒',color:'#2f9e6e'};
+  if(['library','theatre','arts_centre'].includes(a)||t.tourism==='museum') return {key:'cultura',cat:'Cultura',icon:'🎭',color:'#c79ff0'};
+  if(['park','playground','sports_centre','stadium','pitch'].includes(l)) return {key:'recreacion',cat:'Recreación',icon:'🌳',color:'#5ee0a0'};
+  if(a==='bus_station'||t.public_transport==='station'||t.railway==='station') return {key:'transporte',cat:'Transporte',icon:'🚉',color:'#7cc3ff'};
+  return null;
+}
+async function overpass(q){
+  let lastErr;
+  for(const url of OVERPASS_MIRRORS){
+    try{
+      const ac=new AbortController();const to=setTimeout(()=>ac.abort(),30000);
+      const r=await fetch(url,{method:'POST',body:'data='+encodeURIComponent(q),signal:ac.signal});
+      clearTimeout(to);
+      if(!r.ok){lastErr=new Error('HTTP '+r.status);continue;}
+      const j=await r.json();return j.elements||[];
+    }catch(e){lastErr=e;}
+  }
+  throw lastErr||new Error('overpass');
+}
+function poiQuery(lat,lon){return `[out:json][timeout:25];(
+ nwr[amenity~"^(school|kindergarten|college|university|hospital|clinic|pharmacy|doctors|library|theatre|arts_centre|marketplace|bus_station)$"](around:5000,${lat},${lon});
+ nwr[shop~"^(supermarket|mall|convenience|department_store)$"](around:5000,${lat},${lon});
+ nwr[leisure~"^(park|playground|sports_centre|stadium|pitch)$"](around:5000,${lat},${lon});
+ nwr[tourism=museum](around:5000,${lat},${lon});
+ nwr[public_transport=station](around:5000,${lat},${lon});
+ nwr[railway=station](around:5000,${lat},${lon});
+ nwr[landuse=construction](around:5000,${lat},${lon});
+ nwr[building=construction](around:5000,${lat},${lon});
+);out center 400;`;}
+function roadQuery(lat,lon){return `[out:json][timeout:25];
+ (way[highway~"^(motorway|trunk|primary|secondary)$"](around:2500,${lat},${lon}););out geom 250;`;}
+function minGeomDist(lat,lon,geom){let d=Infinity;(geom||[]).forEach(p=>{const dd=haversine(lat,lon,p.lat,p.lon);if(dd<d)d=dd;});return d;}
+
+function openAnalysis(html){$('anBody').innerHTML=html;$('analysisModal').classList.remove('hidden');}
+async function analyzeZone(){
+  if(!current||!current.coords||current.coords.lat==null){toast('Ubica el lote en el mapa primero');return;}
+  const {lat,lon}=current.coords;
+  const warn=current.coords.source==='city'?'<div style="background:#3a2c05;color:#e0a83b;font-size:12px;padding:8px 10px;border-radius:8px;margin-bottom:12px">⚠️ Esta foto no traía GPS: el análisis usa el centro de la ciudad. Ubícala en el mapa para mayor precisión.</div>':'';
+  openAnalysis(warn+'<div style="text-align:center;padding:30px"><span class="spin"></span><br><br>Analizando 5 km a la redonda…<br><span class="hint">Consultando OpenStreetMap</span></div>');
+  try{
+    const [pois,roads]=await Promise.all([overpass(poiQuery(lat,lon)),overpass(roadQuery(lat,lon))]);
+    const items=[];
+    pois.forEach(e=>{const c=elCenter(e);const k=catOf(e.tags);if(!c||!k)return;
+      items.push({name:(e.tags&&e.tags.name)||k.cat,key:k.key,cat:k.cat,icon:k.icon,color:k.color,lat:c.lat,lon:c.lon,dist:haversine(lat,lon,c.lat,c.lon)});});
+    // vías: distancia mínima a la geometría; dedup por nombre quedándose con la más cercana
+    const roadMap={};
+    roads.forEach(w=>{const d=minGeomDist(lat,lon,w.geometry);if(!isFinite(d))return;
+      const nm=(w.tags&&(w.tags.name||w.tags.ref))||('Vía '+(w.tags&&w.tags.highway));
+      const key=nm+'|'+(w.tags&&w.tags.highway);
+      if(!roadMap[key]||d<roadMap[key].dist)roadMap[key]={name:nm,type:w.tags&&w.tags.highway,dist:d};});
+    const roadItems=Object.values(roadMap).sort((a,b)=>a.dist-b.dist);
+    renderAnalysis(warn,items,roadItems);
+    plotAnalysis(items);
+  }catch(e){console.error(e);openAnalysis(warn+'<div style="padding:20px;color:var(--warn)">No se pudo consultar OpenStreetMap ahora (servidor ocupado). Intenta de nuevo en un momento.</div>');}
+}
+const ROAD_LABEL={motorway:'Autopista',trunk:'Vía troncal',primary:'Vía principal',secondary:'Vía secundaria'};
+function renderAnalysis(warn,items,roads){
+  const byCat={};items.forEach(i=>{(byCat[i.key]=byCat[i.key]||{cat:i.cat,icon:i.icon,list:[]}).list.push(i);});
+  const order=['educacion','salud','comercio','cultura','recreacion','transporte','construccion'];
+  let html=warn;
+  html+=`<div class="hint" style="margin-bottom:12px">Radio de 5 km alrededor del lote · datos de OpenStreetMap</div>`;
+  // Vías principales
+  html+=`<div style="font-weight:700;margin:4px 0 6px">🛣️ Vías principales</div>`;
+  if(roads.length){
+    html+=roads.slice(0,4).map(r=>`<div style="display:flex;justify-content:space-between;font-size:13.5px;padding:4px 0;border-bottom:1px solid var(--border)">
+      <span>${esc(r.name)} <span class="hint">${ROAD_LABEL[r.type]||r.type}</span></span><b>${fmtDist(r.dist)}</b></div>`).join('');
+  } else html+=`<div class="hint">No se hallaron vías principales cercanas.</div>`;
+  // Equipamientos por categoría
+  order.forEach(k=>{const g=byCat[k];if(!g)return;
+    const list=g.list.sort((a,b)=>a.dist-b.dist);
+    html+=`<div style="font-weight:700;margin:16px 0 6px">${g.icon} ${g.cat} <span class="hint">(${list.length})</span></div>`;
+    html+=list.slice(0,6).map(i=>`<div style="display:flex;justify-content:space-between;font-size:13.5px;padding:4px 0;border-bottom:1px solid var(--border)">
+      <span>${esc(i.name)}</span><b>${fmtDist(i.dist)}</b></div>`).join('');
+    if(list.length>6)html+=`<div class="hint" style="margin-top:4px">… y ${list.length-6} más</div>`;
+  });
+  if(!items.length)html+=`<div class="hint" style="margin-top:12px">No se encontraron equipamientos en 5 km (¿zona rural o sin datos en OSM?).</div>`;
+  $('anBody').innerHTML=html;
+}
+function plotAnalysis(items){
+  analysisLayer.clearLayers();
+  items.sort((a,b)=>a.dist-b.dist).slice(0,80).forEach(i=>{
+    L.circleMarker([i.lat,i.lon],{radius:5,color:i.color,fillColor:i.color,fillOpacity:.7,weight:1})
+     .bindTooltip(`${i.icon} ${esc(i.name)} · ${fmtDist(i.dist)}`).addTo(analysisLayer);
+  });
+}
+
 /* ===================== Init ===================== */
 (async function(){
   initMap();
@@ -457,6 +572,8 @@ function friendly(e){const m=(e&&e.message||''+e);
   $('dPhone').addEventListener('input',()=>{renderCallRow();updatePhoneHint();});
   $('dSave').onclick=saveDetail;
   $('dDelete').onclick=deleteDetail;
+  $('dAnalyze').onclick=analyzeZone;
+  $('anClose').onclick=()=>{$('analysisModal').classList.add('hidden');analysisLayer.clearLayers();};
   $('dGcal').onclick=()=>{const u=gcalLink();if(!u){toast('Escribe fecha y hora de la visita');return;}window.open(u,'_blank');};
   // sesión
   Backend.onAuth(u=>{ me=u; if(u) enterApp(); else showAuth(); });

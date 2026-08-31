@@ -21,11 +21,9 @@ App web para captar propiedades a partir de fotos de **vallas de venta/renta**:
 4. En la consola de Firebase, activa:
    - **Authentication** → *Sign-in method* → habilita **Correo/Contraseña** y **Google**.
    - **Firestore Database** → *Crear base de datos* (modo producción).
-   - **Storage** → *Comenzar*.
-5. Pega las reglas de seguridad:
-   - Firestore → pestaña **Reglas** → contenido de [`firestore.rules`](firestore.rules).
-   - Storage → pestaña **Reglas** → contenido de [`storage.rules`](storage.rules).
-   - (Estas reglas garantizan que **cada usuario solo accede a lo suyo**.)
+   - **Storage NO es necesario** — las fotos se guardan comprimidas en Firestore (así evitas el plan de pago Blaze).
+5. Pega las reglas de seguridad en Firestore → pestaña **Reglas** → contenido de [`firestore.rules`](firestore.rules).
+   (Garantizan que **cada usuario solo accede a lo suyo**.)
 6. En **Authentication → Settings → Dominios autorizados**, agrega el dominio de tu GitHub Pages
    (`baronaarchitect-collab.github.io`) para que el login funcione en producción.
 
@@ -42,7 +40,7 @@ Abre http://localhost:5190
 
 - `index.html` — la app completa (auth + mapa + subida + OCR + CRM + ajustes).
 - `firebase-config.js` — pega aquí tu config de Firebase.
-- `firestore.rules` / `storage.rules` — reglas de seguridad (cada quien ve solo lo suyo).
+- `firestore.rules` — reglas de seguridad (cada quien ve solo lo suyo). Las fotos van comprimidas en Firestore; **no se usa Storage**.
 - `server.js` — mini-servidor local para pruebas.
 
 ## Notas

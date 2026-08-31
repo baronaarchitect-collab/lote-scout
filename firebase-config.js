@@ -11,10 +11,10 @@
    (todo se guarda solo en este navegador, sin cuentas reales).
    ========================================================================= */
 window.firebaseConfig = {
-  apiKey: "PEGA_AQUI",
-  authDomain: "PEGA_AQUI",
-  projectId: "PEGA_AQUI",
-  storageBucket: "PEGA_AQUI",
-  messagingSenderId: "PEGA_AQUI",
-  appId: "PEGA_AQUI"
+  apiKey: "AIzaSyAr6hy25pEYHj0RUSP8fkCYybIBIeB-Fn4",
+  authDomain: "analisis-de-lotes.firebaseapp.com",
+  projectId: "analisis-de-lotes",
+  storageBucket: "analisis-de-lotes.firebasestorage.app",
+  messagingSenderId: "999227291881",
+  appId: "1:999227291881:web:3cb15eb38b9294ec9e1878"
 };
