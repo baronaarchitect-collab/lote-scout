@@ -185,6 +185,16 @@
         <div class="hint">Define el centro del mapa. Al extender la app, cada ciudad cargará su propia normativa.</div>
       </div>
       <div class="field"><label>Cuenta</label><input id="sEmail" disabled></div>
+      <div class="field"><label>Plan</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="sPlan" style="font-weight:700">Gratis</span>
+          <button class="btn sm" id="sUpgrade" style="flex:none;margin-left:auto">⭐ Pasar a Pro</button>
+        </div>
+      </div>
+      <details style="margin-bottom:12px"><summary class="hint" style="cursor:pointer">Configuración avanzada (admin)</summary>
+        <div class="field" style="margin-top:8px"><label>Enlace de pago (Pro)</label><input id="sPayUrl" placeholder="https://… (Wompi, Bold, Stripe…)"></div>
+        <div class="field"><label>Backend de informes por correo (Apps Script /exec)</label><input id="sReportUrl" placeholder="https://script.google.com/…/exec"></div>
+      </details>
       <button class="btn primary" id="sSave" style="width:100%">Guardar ajustes</button>
       <button class="btn ghost" id="sLogout" style="width:100%;margin-top:10px">Cerrar sesión</button>
     </div>
@@ -196,6 +206,29 @@
   <div class="sheet">
     <div class="hd"><h2 id="anTitle">Análisis de la zona</h2><button class="iconbtn" id="anClose">✕</button></div>
     <div class="bd" id="anBody"></div>
+  </div>
+</div>
+
+<!-- ================= UPGRADE (Pro) ================= -->
+<div id="upgradeModal" class="modal hidden">
+  <div class="sheet" style="max-width:440px">
+    <div class="hd"><h2>⭐ Actualiza a Pro</h2><button class="iconbtn" id="upClose">✕</button></div>
+    <div class="bd">
+      <p class="hint" id="upWhy" style="margin-top:0"></p>
+      <div style="background:var(--panel2);border:1px solid var(--accent);border-radius:12px;padding:14px;margin:10px 0">
+        <div style="font-weight:700;margin-bottom:8px">El plan Pro incluye:</div>
+        <div style="font-size:13.5px;line-height:1.9">
+          🔍 Análisis de la zona (equipamientos a 5 km)<br>
+          🗺️ Ver cada punto en el mapa junto a tu foto<br>
+          💰 Comparar precios/rentas por ubicación (Airbnb · Booking · Finca Raíz · Metro Cuadrado)<br>
+          📄 Descargar y enviar el informe editable (.doc)
+        </div>
+      </div>
+      <div style="font-weight:700;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Gratis para siempre</div>
+      <div style="font-size:13.5px;line-height:1.8;margin-bottom:14px">📷 Subir fotos · 🗺️ Verlas en el mapa · 💬 CRM + WhatsApp con los datos del dueño</div>
+      <button class="btn primary" id="upPay" style="width:100%">Pasar a Pro</button>
+      <div class="hint" id="upNote" style="margin-top:8px"></div>
+    </div>
   </div>
 </div>
 
@@ -431,10 +464,16 @@ async function deleteDetail(){
 function openSettings(){
   const sel=$('sCity');sel.innerHTML=Object.keys(CITIES).map(c=>`<option ${c===(profile.city||DEFAULT_CITY)?'selected':''}>${c}</option>`).join('');
   $('sEmail').value=me?me.email:'';
+  $('sPlan').textContent=isPro()?'⭐ Pro':'Gratis';
+  $('sUpgrade').style.display=isPro()?'none':'';
+  $('sPayUrl').value=payUrl();
+  $('sReportUrl').value=reportEndpoint();
   $('settingsModal').classList.remove('hidden');
 }
 async function saveSettings(){
   profile.city=$('sCity').value;
+  localStorage.setItem('ls_pay_url',$('sPayUrl').value.trim());
+  localStorage.setItem('ls_report_endpoint',$('sReportUrl').value.trim());
   await Backend.setProfile({city:profile.city});
   const c=cityView();map.setView(c.c,c.z);
   renderList();$('settingsModal').classList.add('hidden');toast('Ciudad: '+profile.city);
@@ -517,6 +556,7 @@ function nearestGeom(lat,lon,geom){let b={dist:Infinity,lat:null,lon:null};(geom
 function openAnalysis(html){$('anBody').innerHTML=html;$('analysisModal').classList.remove('hidden');}
 async function analyzeZone(){
   if(!current||!current.coords||current.coords.lat==null){toast('Ubica el lote en el mapa primero');return;}
+  if(!isPro()){showUpgrade('El análisis de la zona (equipamientos a 5 km) es una función Pro.');return;}
   const {lat,lon}=current.coords;
   const warn=current.coords.source==='city'?'<div style="background:#3a2c05;color:#e0a83b;font-size:12px;padding:8px 10px;border-radius:8px;margin-bottom:12px">⚠️ Esta foto no traía GPS: el análisis usa el centro de la ciudad. Ubícala en el mapa para mayor precisión.</div>':'';
   openAnalysis(warn+'<div style="text-align:center;padding:30px"><span class="spin"></span><br><br>Analizando 5 km a la redonda…<br><span class="hint">Consultando OpenStreetMap</span></div>');
@@ -532,6 +572,7 @@ async function analyzeZone(){
       const key=nm+'|'+(w.tags&&w.tags.highway);
       if(!roadMap[key]||ng.dist<roadMap[key].dist)roadMap[key]={name:nm,type:w.tags&&w.tags.highway,dist:ng.dist,lat:ng.lat,lon:ng.lon};});
     const roadItems=Object.values(roadMap).sort((a,b)=>a.dist-b.dist);
+    lastAnalysis={items,roads:roadItems,lat,lon};
     renderAnalysis(warn,items,roadItems);
     plotAnalysis(items);
   }catch(e){console.error(e);openAnalysis(warn+'<div style="padding:20px;color:var(--warn)">No se pudo consultar OpenStreetMap ahora (servidor ocupado). Intenta de nuevo en un momento.</div>');}
@@ -545,6 +586,9 @@ function renderAnalysis(warn,items,roads){
   const byCat={};items.forEach(i=>{(byCat[i.key]=byCat[i.key]||{cat:i.cat,icon:i.icon,list:[]}).list.push(i);});
   const order=['educacion','salud','comercio','cultura','recreacion','transporte','construccion'];
   let html=warn;
+  html+=`<div style="display:flex;gap:8px;margin-bottom:10px">
+    <button class="btn sm primary" id="anReportDl" style="flex:1">📄 Descargar informe</button>
+    <button class="btn sm" id="anReportMail" style="flex:1">✉️ Enviar por correo</button></div>`;
   html+=`<div class="hint" style="margin-bottom:10px">Radio de 5 km · datos de OpenStreetMap. <b>Toca cualquier lugar</b> para verlo en el mapa junto a tu foto.</div>`;
   html+=`<div style="font-weight:700;margin:4px 0 4px">🛣️ Vías principales</div>`;
   if(roads.length){
@@ -560,6 +604,8 @@ function renderAnalysis(warn,items,roads){
   $('anBody').innerHTML=html;
   $('anBody').querySelectorAll('.an-item').forEach(el=>el.onclick=()=>
     focusOnMap(+el.dataset.lat,+el.dataset.lon,el.dataset.name,+el.dataset.dist,el.dataset.icon));
+  const dl=$('anReportDl');if(dl)dl.onclick=downloadReport;
+  const ml=$('anReportMail');if(ml)ml.onclick=emailReport;
 }
 function focusOnMap(lat,lon,name,dist,icon){
   if(!current||!current.coords)return;
@@ -590,13 +636,87 @@ function rentLinks(){
     metro:`https://www.metrocuadrado.com/${oper}/${city}/`
   };
 }
-function openRent(k){if(!current||!current.coords){toast('Ubica el lote primero');return;}window.open(rentLinks()[k],'_blank');}
+function openRent(k){if(!current||!current.coords){toast('Ubica el lote primero');return;}
+  if(!isPro()){showUpgrade('Comparar precios/rentas por ubicación es una función Pro.');return;}
+  window.open(rentLinks()[k],'_blank');}
 function plotAnalysis(items){
   analysisLayer.clearLayers();
   items.sort((a,b)=>a.dist-b.dist).slice(0,80).forEach(i=>{
     L.circleMarker([i.lat,i.lon],{radius:5,color:i.color,fillColor:i.color,fillOpacity:.7,weight:1})
      .bindTooltip(`${i.icon} ${esc(i.name)} · ${fmtDist(i.dist)}`).addTo(analysisLayer);
   });
+}
+
+/* ===================== Freemium (Pro) ===================== */
+let lastAnalysis=null;
+function isPro(){return (profile&&profile.plan)==='pro';}
+function payUrl(){return (localStorage.getItem('ls_pay_url')||'').trim();}
+function showUpgrade(why){
+  $('upWhy').textContent=why||'Esta función es parte del plan Pro.';
+  const u=payUrl();
+  $('upNote').innerHTML=u?'Al completar el pago, activamos tu plan Pro en tu cuenta.':'El pago aún no está configurado. Contacta al administrador para activar Pro.';
+  $('upgradeModal').classList.remove('hidden');
+}
+function openPay(){const u=payUrl();if(u)window.open(u,'_blank');else toast('Configura el enlace de pago (ls_pay_url) o contacta al administrador');}
+
+/* ===================== Informe editable (.doc, formato Real Start) ===================== */
+const REPORT_CATS={educacion:'Educativa',comercio:'Comercial',salud:'Servicios de salud',cultura:'Cultural',recreacion:'Recreación y áreas verdes',transporte:'Transporte y movilidad',construccion:'Proyectos en construcción'};
+function reportFilename(){return 'informe_analisis_'+(((current&&current.dir)||'lote').replace(/[^\w-]+/g,'_').slice(0,40))+'.doc';}
+function buildReportDoc(){
+  const lot=current,a=lastAnalysis; if(!lot||!lot.coords)return null;
+  const co=lot.coords, fecha=new Date().toLocaleDateString('es-CO',{year:'numeric',month:'long',day:'numeric'});
+  const gmap=`https://www.google.com/maps?q=${co.lat},${co.lon}`;
+  const val=v=>v?esc(v):'—';
+  const rowsInfra=()=>{
+    if(!a||!a.items||!a.items.length)return `<tr><td colspan="3">Ejecuta el análisis para llenar esta sección.</td></tr>`;
+    const byCat={};a.items.forEach(i=>{(byCat[i.key]=byCat[i.key]||[]).push(i);});
+    const order=['educacion','comercio','salud','cultura','recreacion','transporte','construccion'];let out='';
+    order.forEach(k=>{const list=(byCat[k]||[]).sort((x,y)=>x.dist-y.dist).slice(0,6);
+      list.forEach((i,idx)=>{out+=`<tr>${idx===0?`<td rowspan="${list.length}"><b>${REPORT_CATS[k]}</b></td>`:''}<td>${esc(i.name)}</td><td>${fmtDist(i.dist)}</td></tr>`;});});
+    return out||`<tr><td colspan="3">Sin equipamientos en 5 km.</td></tr>`;
+  };
+  const roadsHtml=()=>{if(!a||!a.roads||!a.roads.length)return '—';
+    return a.roads.slice(0,4).map(r=>`${esc(r.name)} (${ROAD_LABEL[r.type]||r.type}) — ${fmtDist(r.dist)}`).join('<br>');};
+  const style=`<style>body{font-family:Calibri,Arial,sans-serif;color:#222;font-size:11pt}
+    h1{font-size:16pt;color:#14532d;margin:0 0 2px}h2{font-size:12.5pt;color:#14532d;border-bottom:2px solid #2f9e6e;padding-bottom:3px;margin:16px 0 8px}
+    table{border-collapse:collapse;width:100%;margin:6px 0}td,th{border:1px solid #b9c4cf;padding:6px 8px;font-size:10.5pt;vertical-align:top}th{background:#eaf3ee;text-align:left}
+    .k{background:#f4f7fa;width:34%;font-weight:bold}</style>`;
+  const body=`<h1>Formato de Análisis de Tierra</h1>
+    <div style="color:#667">Informe generado con Lote Scout · ${fecha}</div>
+    <h2>Datos generales</h2>
+    <table><tr><td class="k">Fecha</td><td>${fecha}</td></tr>
+      <tr><td class="k">Proyecto / referencia</td><td>${val(lot.dir)}</td></tr>
+      <tr><td class="k">Elaboró el informe</td><td>${val(me&&me.email)}</td></tr>
+      <tr><td class="k">Ciudad</td><td>${val(profile.city)}</td></tr></table>
+    <h2>Información del propietario</h2>
+    <table><tr><td class="k">Teléfono</td><td>${val(lot.phone)}</td></tr>
+      <tr><td class="k">Motivo de venta</td><td>${val(lot.porque)}</td></tr></table>
+    <h2>Información del terreno</h2>
+    <table><tr><td class="k">Dirección / referencia</td><td>${val(lot.dir)}</td></tr>
+      <tr><td class="k">Operación</td><td>${val(lot.oper)}</td></tr>
+      <tr><td class="k">Precio</td><td>${lot.precio?('$ '+esc(lot.precio)):'—'}</td></tr>
+      <tr><td class="k">Coordenadas (GPS)</td><td>${co.lat}, ${co.lon} &nbsp; (<a href="${gmap}">ver en Google Maps</a>)</td></tr></table>
+    <h2>Movilidad — vías principales</h2><div>${roadsHtml()}</div>
+    <h2>Infraestructura de la zona (5 km a la redonda)</h2>
+    <table><tr><th>Tipo de infraestructura</th><th>Descripción</th><th>Distancia al predio</th></tr>${rowsInfra()}</table>
+    <p style="color:#889;font-size:9pt;margin-top:18px">Equipamientos y vías: datos de OpenStreetMap. Distancias en línea recta desde las coordenadas del predio. Documento editable — ajústalo según tu levantamiento en campo. Basado en el Formato de Análisis de Tierra.</p>`;
+  return `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Informe de Análisis</title>${style}</head><body>${body}</body></html>`;
+}
+function downloadReport(){const doc=buildReportDoc();if(!doc){toast('Ejecuta el análisis primero');return;}
+  const blob=new Blob(['﻿'+doc],{type:'application/msword'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=reportFilename();a.click();toast('Informe .doc descargado');}
+function reportEndpoint(){return (localStorage.getItem('ls_report_endpoint')||'').trim();}
+async function emailReport(){
+  const doc=buildReportDoc();if(!doc){toast('Ejecuta el análisis primero');return;}
+  const url=reportEndpoint();
+  if(!url){downloadReport();toast('Correo no configurado: informe descargado. Configúralo en Ajustes.');return;}
+  const to=me&&me.email;
+  const payload={email:to,filename:reportFilename(),subject:'Informe de análisis de tierra — '+((current&&current.dir)||'lote'),
+    body:'Adjunto el informe de análisis de la zona (formato editable .doc), generado con Lote Scout.',docBase64:b64utf8(doc)};
+  toast('Enviando informe…');
+  try{await fetch(url,{method:'POST',body:JSON.stringify(payload)});toast('Informe enviado a '+to);}
+  catch(e){try{await fetch(url,{method:'POST',mode:'no-cors',body:JSON.stringify(payload)});toast('Informe enviado a '+to);}
+    catch(e2){downloadReport();toast('No se pudo enviar; informe descargado.');}}
 }
 
 /* ===================== Init ===================== */
@@ -626,6 +746,9 @@ function plotAnalysis(items){
   $('dAnalyze').onclick=analyzeZone;
   $('anClose').onclick=()=>{$('analysisModal').classList.add('hidden');analysisLayer.clearLayers();focusLayer.clearLayers();$('backToAnalysis').classList.add('hidden');};
   $('backToAnalysis').onclick=backToAnalysis;
+  $('upClose').onclick=()=>$('upgradeModal').classList.add('hidden');
+  $('upPay').onclick=openPay;
+  $('sUpgrade').onclick=()=>{$('settingsModal').classList.add('hidden');showUpgrade('Desbloquea el análisis de zona, los comparativos por ubicación y el informe editable.');};
   $('rAirbnb').onclick=()=>openRent('airbnb');
   $('rBooking').onclick=()=>openRent('booking');
   $('rFinca').onclick=()=>openRent('fincaraiz');

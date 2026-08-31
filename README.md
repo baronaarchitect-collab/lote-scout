@@ -29,6 +29,30 @@ App web para captar propiedades a partir de fotos de **vallas de venta/renta**:
 
 Sube los cambios (`git push`) y listo: la app pasa automáticamente a cuentas reales.
 
+## Planes: Gratis vs Pro
+
+- **Gratis:** subir fotos · verlas en el mapa con su ubicación · CRM (WhatsApp + datos del dueño).
+- **Pro:** análisis de zona (equipamientos a 5 km) · comparativos por ubicación (Airbnb/Booking/Finca Raíz/Metro Cuadrado) · descargar y enviar el **informe editable (.doc)**.
+
+El plan vive en Firestore: `users/{uid}.plan` = `free` (por defecto) o `pro`.
+Las reglas (`firestore.rules`) **impiden que un usuario se auto-active** Pro; solo el admin lo cambia.
+
+### Activar Pro a un usuario (admin)
+1. Firebase → Firestore → colección `users` → documento del usuario (su `uid`).
+2. Agrega/edita el campo **`plan`** con valor **`pro`** → Guardar.
+3. El usuario recarga la app y ya tiene Pro.
+
+### Cobro (opcional, para automatizar)
+- Pon un **enlace de pago** (Wompi, Bold, MercadoPago, Stripe…) en **Ajustes → Configuración avanzada → Enlace de pago**.
+- El MVP es **manual**: el usuario paga por ese enlace y tú activas su `plan=pro` (paso de arriba).
+- Para activación **automática** necesitarías un webhook del proveedor de pago que escriba `plan=pro` (con Firebase requiere Cloud Functions / plan Blaze, o un pequeño servidor).
+
+## Informe editable (.doc)
+Tras **Analizar**, en el panel aparecen **📄 Descargar informe** y **✉️ Enviar por correo**.
+El informe sigue el *Formato de Análisis de Tierra* (datos del propietario, del terreno, **coordenadas GPS**, vías principales y la tabla **Infraestructura de la zona** con los equipamientos y sus distancias). Se abre y edita en Word.
+
+Para **enviarlo por correo** despliega [`backend/report-mailer.gs`](backend/report-mailer.gs) como app web de Apps Script y pega su URL `/exec` en **Ajustes → Configuración avanzada → Backend de informes**. Sin backend, el botón **descarga** el informe.
+
 ## Correr localmente
 
 ```bash
