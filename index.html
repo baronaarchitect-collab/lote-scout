@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Lote Scout · CRM de vallas y lotes</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+  :root{--bg:#0f1720;--panel:#16212e;--panel2:#1d2b3a;--border:#2a3a4d;--text:#e7eef6;--muted:#93a4b8;
+        --accent:#2f9e6e;--accent2:#3aa0ff;--wa:#25d366;--danger:#e5534b;--warn:#e0a83b;--r:12px}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text)}
+  button{font-family:inherit;cursor:pointer}
+  input,textarea,select{font-family:inherit}
+  a{color:var(--accent2)}
+  .hidden{display:none!important}
+  .spin{width:15px;height:15px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;display:inline-block;vertical-align:middle}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .btn{border:1px solid var(--border);background:var(--panel2);color:var(--text);padding:11px 14px;border-radius:10px;font-size:14px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:.15s}
+  .btn:hover{border-color:var(--accent2)}
+  .btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+  .btn.wa{background:var(--wa);border-color:transparent;color:#04361b}
+  .btn.call{background:var(--accent2);border-color:transparent;color:#04243d}
+  .btn.danger{background:transparent;border-color:var(--danger);color:var(--danger)}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:7px 10px;font-size:12.5px;border-radius:8px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:5px}
+  .field input,.field textarea,.field select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:11px 12px;border-radius:10px;font-size:15px}
+  .field textarea{resize:vertical;min-height:64px}
+  .row{display:flex;gap:10px}.row>*{flex:1}
+  /* AUTH */
+  .auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .auth .card{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:26px}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .brand .logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:20px}
+  .brand h1{font-size:19px;margin:0}
+  .auth .sub{color:var(--muted);font-size:13px;margin:2px 0 20px}
+  .tabs{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:16px}
+  .tabs button{flex:1;background:transparent;border:0;color:var(--muted);padding:9px;border-radius:7px;font-weight:600;font-size:14px}
+  .tabs button.on{background:var(--panel2);color:var(--text)}
+  .err{color:var(--danger);font-size:13px;margin-top:8px;min-height:18px}
+  .demo-banner{background:var(--warn);color:#3a2c05;font-size:12px;text-align:center;padding:6px 10px;font-weight:600}
+  /* APP */
+  .topbar{position:sticky;top:0;z-index:500;display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--border)}
+  .topbar .logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:16px}
+  .topbar h1{font-size:15px;margin:0;font-weight:650}
+  .topbar .sp{flex:1}
+  .citychip{font-size:12.5px;color:var(--muted);background:var(--bg);border:1px solid var(--border);padding:5px 10px;border-radius:20px;display:flex;align-items:center;gap:6px}
+  .iconbtn{width:36px;height:36px;border-radius:10px;background:var(--panel2);border:1px solid var(--border);color:var(--text);display:flex;align-items:center;justify-content:center;font-size:16px}
+  .wrap{max-width:1100px;margin:0 auto;padding:14px}
+  #map{height:46vh;min-height:300px;width:100%;border-radius:14px;overflow:hidden;background:#0a0f15;border:1px solid var(--border)}
+  .leaflet-container{background:#0a0f15}
+  .upload-cta{margin:14px 0}
+  .big-upload{width:100%;border:2px dashed var(--border);border-radius:14px;padding:18px;background:var(--panel);color:var(--muted);display:flex;align-items:center;justify-content:center;gap:10px;font-weight:600;font-size:15px}
+  .big-upload:hover{border-color:var(--accent);color:var(--text)}
+  .big-upload b{color:var(--text)}
+  .section-t{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:16px 4px 8px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .lotcard{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:.12s}
+  .lotcard:hover{border-color:var(--accent)}
+  .lotcard .ph{width:100%;aspect-ratio:4/3;object-fit:cover;background:#0a0f15;display:block}
+  .lotcard .ph.empty{display:flex;align-items:center;justify-content:center;font-size:30px;color:var(--muted)}
+  .lotcard .body{padding:9px 11px}
+  .lotcard .t{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lotcard .s{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lotcard .chips{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+  .chip{font-size:10.5px;padding:2px 7px;border-radius:20px;background:var(--bg);border:1px solid var(--border);color:var(--muted)}
+  .empty-note{color:var(--muted);text-align:center;padding:30px;font-size:14px;line-height:1.5}
+  /* MODAL / detail */
+  .modal{position:fixed;inset:0;z-index:1000;background:rgba(6,10,15,.72);display:flex;align-items:flex-end;justify-content:center}
+  @media(min-width:720px){.modal{align-items:center}}
+  .sheet{background:var(--panel);width:100%;max-width:560px;max-height:94vh;overflow-y:auto;border-radius:18px 18px 0 0;border:1px solid var(--border)}
+  @media(min-width:720px){.sheet{border-radius:18px}}
+  .sheet .hd{position:sticky;top:0;background:var(--panel);display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--border);z-index:2}
+  .sheet .hd h2{font-size:16px;margin:0;flex:1}
+  .sheet .bd{padding:16px}
+  .photo-big{width:100%;border-radius:12px;max-height:300px;object-fit:contain;background:#0a0f15;display:block;margin-bottom:12px}
+  .callrow{display:flex;gap:8px;margin-bottom:12px}
+  .callrow .btn{flex:1}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--accent);color:var(--text);padding:11px 18px;border-radius:10px;font-size:13.5px;box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:3000;opacity:0;transition:.25s;pointer-events:none;max-width:90vw;text-align:center}
+  .toast.show{opacity:1}
+  .hint{font-size:12px;color:var(--muted);line-height:1.4;margin-top:4px}
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--panel2);color:var(--text)}
+</style>
+</head>
+<body>
+
+<!-- ================= AUTH ================= -->
+<div id="authView" class="auth hidden">
+  <div class="card">
+    <div class="brand"><div class="logo">🏙️</div><h1>Lote Scout</h1></div>
+    <div class="sub">Captura vallas de venta/renta, ubícalas en el mapa y gestiona tus leads.</div>
+    <div class="tabs"><button id="tabLogin" class="on">Ingresar</button><button id="tabSignup">Crear cuenta</button></div>
+    <div class="field"><label>Correo</label><input id="aEmail" type="email" autocomplete="email" placeholder="tucorreo@ejemplo.com"></div>
+    <div class="field"><label>Contraseña</label><input id="aPass" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+    <button id="aSubmit" class="btn primary" style="width:100%">Ingresar</button>
+    <button id="aGoogle" class="btn" style="width:100%;margin-top:10px">Continuar con Google</button>
+    <div class="err" id="aErr"></div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="appView" class="hidden">
+  <div class="demo-banner hidden" id="demoBanner">Modo demo local — configura Firebase (README) para cuentas reales en la nube</div>
+  <div class="topbar">
+    <div class="logo">🏙️</div><h1>Lote Scout</h1>
+    <div class="sp"></div>
+    <div class="citychip" id="cityChip">📍 —</div>
+    <button class="iconbtn" id="btnSettings" title="Ajustes">⚙️</button>
+  </div>
+  <div class="wrap">
+    <div id="map"></div>
+    <div class="upload-cta">
+      <button class="big-upload" id="btnUpload">📷 <b>Subir fotos</b> del carrete (vallas de venta/renta)</button>
+      <input type="file" id="fileInput" accept="image/*" multiple class="hidden">
+    </div>
+    <div class="section-t" id="listTitle">Mis lotes</div>
+    <div class="cards" id="cards"></div>
+    <div class="empty-note hidden" id="emptyNote">Aún no tienes fotos. Toca <b>Subir fotos</b> para empezar.</div>
+  </div>
+</div>
+
+<!-- ================= DETAIL ================= -->
+<div id="detailModal" class="modal hidden">
+  <div class="sheet">
+    <div class="hd"><h2 id="dTitle">Lote</h2><button class="iconbtn" id="dClose">✕</button></div>
+    <div class="bd">
+      <div id="dPhotoWrap"></div>
+      <div class="callrow" id="dCallRow"></div>
+      <div class="field"><label>Teléfono de la valla</label>
+        <div class="row" style="gap:8px">
+          <input id="dPhone" inputmode="tel" placeholder="Ej: 300 123 4567" style="flex:2">
+          <button class="btn sm" id="dDetect" style="flex:1;white-space:nowrap">🤖 Detectar (IA)</button>
+        </div>
+        <div class="hint" id="dPhoneHint"></div>
+      </div>
+      <div class="field"><label>Dirección / referencia</label><input id="dDir" placeholder="Dirección o punto de referencia"></div>
+      <div class="row">
+        <div class="field"><label>Precio de la propiedad</label><input id="dPrecio" inputmode="numeric" placeholder="$"></div>
+        <div class="field"><label>Operación</label><select id="dOper"><option>Venta</option><option>Renta</option></select></div>
+      </div>
+      <div class="field"><label>¿Por qué vende?</label><textarea id="dPorque" placeholder="Motivo de venta, urgencia, notas del dueño…"></textarea></div>
+      <div class="field"><label>Agendar visita</label>
+        <input id="dVisita" type="datetime-local">
+        <button class="btn sm ghost" id="dGcal" style="margin-top:8px">🗓️ Añadir a Google Calendar</button>
+      </div>
+      <div class="field"><label>Coordenadas</label>
+        <div class="row"><input id="dLat" placeholder="lat"><input id="dLon" placeholder="lon"></div>
+        <div class="hint">Si la foto no traía GPS, toca el mapa para ubicarla.</div>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn primary" id="dSave" style="flex:2">💾 Guardar</button>
+        <button class="btn danger" id="dDelete" style="flex:1">🗑️</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= SETTINGS ================= -->
+<div id="settingsModal" class="modal hidden">
+  <div class="sheet" style="max-width:420px">
+    <div class="hd"><h2>Ajustes</h2><button class="iconbtn" id="sClose">✕</button></div>
+    <div class="bd">
+      <div class="field"><label>Ciudad</label><select id="sCity"></select>
+        <div class="hint">Define el centro del mapa. Al extender la app, cada ciudad cargará su propia normativa.</div>
+      </div>
+      <div class="field"><label>Cuenta</label><input id="sEmail" disabled></div>
+      <button class="btn primary" id="sSave" style="width:100%">Guardar ajustes</button>
+      <button class="btn ghost" id="sLogout" style="width:100%;margin-top:10px">Cerrar sesión</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
+<script src="firebase-config.js"></script>
+<script type="module">
+/* ===================== Ciudades (config base, ampliable) ===================== */
+const CITIES={
+  'Cali':{c:[3.4516,-76.5320],z:12},
+  'Barranquilla':{c:[10.9685,-74.7813],z:12},
+  'Bogotá':{c:[4.7110,-74.0721],z:11},
+  'Medellín':{c:[6.2442,-75.5812],z:12},
+  'Cartagena':{c:[10.3910,-75.4794],z:12},
+  'Bucaramanga':{c:[7.1193,-73.1227],z:12},
+  'Santa Marta':{c:[11.2408,-74.1990],z:12},
+};
+const DEFAULT_CITY='Cali';
+
+/* ===================== Utilidades ===================== */
+const $=id=>document.getElementById(id);
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2800);}
+function uid(){return 'l'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function normPhone(raw){if(!raw)return null;let d=(''+raw).replace(/[^\d]/g,'');if(!d)return null;
+  if(d.length===10&&d[0]==='3')d='57'+d;else if(d.length===7||d.length===8)d='572'+d;return d;}
+function fileToDataURL(f){return new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.readAsDataURL(f);});}
+function localDT(d){d=d||new Date();const p=n=>(''+n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;}
+
+/* ===================== Backend abstracto (Firebase | Local) ===================== */
+const cfg=window.firebaseConfig||{};
+const USE_FB=!!(cfg.apiKey&&!/PEGA_AQUI/.test(cfg.apiKey));
+let Backend;
+
+/* ---------- Local (demo) ---------- */
+function LocalBackend(){
+  const LS=window.localStorage;
+  const users=()=>JSON.parse(LS.getItem('ls_users')||'{}');
+  const saveUsers=u=>LS.setItem('ls_users',JSON.stringify(u));
+  let authCb=null,cur=null;
+  function db(){return new Promise((res,rej)=>{const r=indexedDB.open('lotescout',1);
+    r.onupgradeneeded=e=>{const d=e.target.result;if(!d.objectStoreNames.contains('lots'))d.createObjectStore('lots',{keyPath:'id'});};
+    r.onsuccess=e=>res(e.target.result);r.onerror=e=>rej(e.target.error);});}
+  async function all(){const d=await db();return new Promise((res,rej)=>{const t=d.transaction('lots').objectStore('lots').getAll();t.onsuccess=()=>res(t.result||[]);t.onerror=()=>rej(t.error);});}
+  async function put(o){const d=await db();return new Promise((res,rej)=>{const t=d.transaction('lots','readwrite').objectStore('lots').put(o);t.onsuccess=()=>res();t.onerror=()=>rej(t.error);});}
+  async function del(id){const d=await db();return new Promise((res,rej)=>{const t=d.transaction('lots','readwrite').objectStore('lots').delete(id);t.onsuccess=()=>res();t.onerror=()=>rej(t.error);});}
+  function emit(){authCb&&authCb(cur?{uid:cur,email:cur}:null);}
+  return {
+    demo:true,
+    onAuth(cb){authCb=cb;const s=LS.getItem('ls_session');cur=s||null;setTimeout(emit,0);},
+    async signup(email,pass){const u=users();if(u[email])throw new Error('Ese correo ya está registrado.');u[email]={pass};saveUsers(u);cur=email;LS.setItem('ls_session',email);emit();},
+    async login(email,pass){const u=users();if(!u[email]||u[email].pass!==pass)throw new Error('Correo o contraseña incorrectos.');cur=email;LS.setItem('ls_session',email);emit();},
+    async google(){throw new Error('Google solo disponible con Firebase. Usa correo y contraseña en modo demo.');},
+    async logout(){cur=null;LS.removeItem('ls_session');emit();},
+    async getProfile(){return JSON.parse(LS.getItem('ls_profile_'+cur)||'{}');},
+    async setProfile(p){const cur0=await this.getProfile();LS.setItem('ls_profile_'+cur,JSON.stringify({...cur0,...p}));},
+    async listLots(){return (await all()).filter(l=>l.uid===cur).sort((a,b)=>b.createdAt-a.createdAt);},
+    async uploadPhoto(file){return await fileToDataURL(file);},
+    async createLot(fields,file){const id=uid();let photoURL=null;if(file)photoURL=await fileToDataURL(file);
+      const lot={id,uid:cur,createdAt:Date.now(),photoURL,...fields};await put(lot);return lot;},
+    async updateLot(id,fields){const d=await db();const cur0=await new Promise((res)=>{const t=d.transaction('lots').objectStore('lots').get(id);t.onsuccess=()=>res(t.result);});
+      const merged={...cur0,...fields};await put(merged);return merged;},
+    async deleteLot(id){await del(id);}
+  };
+}
+
+/* ---------- Firebase ---------- */
+async function FirebaseBackend(){
+  const {initializeApp}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+  const A=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+  const F=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  const S=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js');
+  const app=initializeApp(cfg);const auth=A.getAuth(app);const db=F.getFirestore(app);const st=S.getStorage(app);
+  let U=null;
+  return {
+    demo:false,
+    onAuth(cb){A.onAuthStateChanged(auth,u=>{U=u;cb(u?{uid:u.uid,email:u.email}:null);});},
+    async signup(email,pass){await A.createUserWithEmailAndPassword(auth,email,pass);},
+    async login(email,pass){await A.signInWithEmailAndPassword(auth,email,pass);},
+    async google(){await A.signInWithPopup(auth,new A.GoogleAuthProvider());},
+    async logout(){await A.signOut(auth);},
+    async getProfile(){const s=await F.getDoc(F.doc(db,'users',U.uid));return s.exists()?s.data():{};},
+    async setProfile(p){await F.setDoc(F.doc(db,'users',U.uid),p,{merge:true});},
+    async listLots(){const q=F.query(F.collection(db,'users',U.uid,'lots'),F.orderBy('createdAt','desc'));
+      const s=await F.getDocs(q);return s.docs.map(d=>({id:d.id,...d.data()}));},
+    async createLot(fields,file){
+      const ref=await F.addDoc(F.collection(db,'users',U.uid,'lots'),{createdAt:Date.now(),...fields});
+      let photoURL=null;
+      if(file){const sref=S.ref(st,`users/${U.uid}/${ref.id}/${Date.now()}_${file.name}`);
+        await S.uploadBytes(sref,file);photoURL=await S.getDownloadURL(sref);
+        await F.updateDoc(ref,{photoURL});}
+      return {id:ref.id,createdAt:Date.now(),photoURL,...fields};
+    },
+    async updateLot(id,fields){await F.updateDoc(F.doc(db,'users',U.uid,'lots',id),fields);return {id,...fields};},
+    async deleteLot(id){await F.deleteDoc(F.doc(db,'users',U.uid,'lots',id));}
+  };
+}
+
+/* ===================== Estado & UI ===================== */
+let map,markers,me=null,profile={},lots=[],current=null,authMode='login';
+
+function initMap(){
+  map=L.map('map',{zoomControl:true}).setView(CITIES[DEFAULT_CITY].c,CITIES[DEFAULT_CITY].z);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap'}).addTo(map);
+  markers=L.layerGroup().addTo(map);
+  map.on('click',e=>{ if(current && !$('detailModal').classList.contains('hidden')){
+    $('dLat').value=e.latlng.lat.toFixed(7);$('dLon').value=e.latlng.lng.toFixed(7);
+    toast('Coordenada fijada — recuerda Guardar');
+  }});
+}
+function cityView(){const c=CITIES[profile.city||DEFAULT_CITY]||CITIES[DEFAULT_CITY];return c;}
+function renderMap(){
+  markers.clearLayers();
+  lots.forEach(l=>{ if(l.coords&&l.coords.lat!=null){
+    const m=L.marker([l.coords.lat,l.coords.lon]).addTo(markers);
+    m.on('click',()=>openDetail(l.id));
+    m.bindTooltip(l.dir||l.phone||'Lote');
+  }});
+}
+function renderList(){
+  $('cityChip').textContent='📍 '+(profile.city||DEFAULT_CITY);
+  const box=$('cards');
+  if(!lots.length){box.innerHTML='';$('emptyNote').classList.remove('hidden');$('listTitle').textContent='Mis lotes';return;}
+  $('emptyNote').classList.add('hidden');
+  $('listTitle').textContent=`Mis lotes (${lots.length})`;
+  box.innerHTML=lots.map(l=>{
+    const t=l.dir||(l.phone?('📞 '+l.phone):'Sin dirección');
+    const s=l.precio?('$ '+l.precio):(l.coords?`${(+l.coords.lat).toFixed(4)}, ${(+l.coords.lon).toFixed(4)}`:'sin ubicación');
+    return `<div class="lotcard" data-id="${l.id}">
+      ${l.photoURL?`<img class="ph" src="${l.photoURL}">`:'<div class="ph empty">🏠</div>'}
+      <div class="body"><div class="t">${esc(t)}</div><div class="s">${esc(s)}</div>
+        <div class="chips">${l.oper?`<span class="chip">${esc(l.oper)}</span>`:''}${l.visita?'<span class="chip">🗓️ visita</span>':''}${l.phone?'<span class="chip">📞</span>':''}</div>
+      </div></div>`;
+  }).join('');
+  box.querySelectorAll('.lotcard').forEach(c=>c.onclick=()=>openDetail(c.dataset.id));
+}
+
+/* ---------- Subida de fotos ---------- */
+async function handleFiles(files){
+  if(!files||!files.length)return;
+  toast(`Procesando ${files.length} foto(s)…`);
+  let firstId=null;
+  for(const f of files){
+    let coords=null;
+    try{const g=await exifr.gps(f);if(g&&g.latitude)coords={lat:+g.latitude.toFixed(7),lon:+g.longitude.toFixed(7),source:'exif'};}catch(e){}
+    if(!coords){const c=cityView();coords={lat:c.c[0],lon:c.c[1],source:'city'};}
+    const lot=await Backend.createLot({coords,oper:'Venta',dir:'',phone:'',precio:'',porque:'',visita:'',notas:''},f);
+    if(!firstId)firstId=lot.id;
+  }
+  await reload();
+  if(files.length===1&&firstId){openDetail(firstId);toast('Foto subida. Detecta el teléfono con IA 🤖');}
+  else toast(`${files.length} fotos subidas ✓`);
+}
+
+/* ---------- Detalle ---------- */
+function openDetail(id){
+  current=lots.find(l=>l.id===id);if(!current)return;
+  $('dTitle').textContent=current.dir||'Lote';
+  $('dPhotoWrap').innerHTML=current.photoURL?`<img class="photo-big" src="${current.photoURL}">`:'';
+  $('dPhone').value=current.phone||'';
+  $('dDir').value=current.dir||'';
+  $('dPrecio').value=current.precio||'';
+  $('dOper').value=current.oper||'Venta';
+  $('dPorque').value=current.porque||'';
+  $('dVisita').value=current.visita||'';
+  $('dLat').value=current.coords?current.coords.lat:'';
+  $('dLon').value=current.coords?current.coords.lon:'';
+  renderCallRow();updatePhoneHint();
+  $('detailModal').classList.remove('hidden');
+  if(current.coords&&current.coords.lat!=null)map.setView([current.coords.lat,current.coords.lon],17);
+}
+function closeDetail(){$('detailModal').classList.add('hidden');current=null;}
+function renderCallRow(){
+  const d=normPhone($('dPhone').value);const row=$('dCallRow');
+  if(!d){row.innerHTML='';return;}
+  row.innerHTML=`<a class="btn call" href="tel:+${d}">📞 Llamar</a>
+    <a class="btn wa" href="https://wa.me/${d}" target="_blank">💬 WhatsApp</a>`;
+}
+function updatePhoneHint(){const d=normPhone($('dPhone').value);$('dPhoneHint').textContent=d?('Se llamará a +'+d):'';}
+async function detectPhone(){
+  if(!current||!current.photoURL){toast('Esta foto no está disponible para IA');return;}
+  const btn=$('dDetect');const old=btn.innerHTML;btn.innerHTML='<span class="spin"></span>';btn.disabled=true;
+  try{
+    if(!window.Tesseract){await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+    const {data}=await Tesseract.recognize(current.photoURL,'eng',{tessedit_char_whitelist:'0123456789 +()-'});
+    const txt=(data.text||'').replace(/[^\d+]/g,' ');
+    // buscar patrones de celular colombiano (10 dígitos que empiezan en 3) o secuencias largas
+    const cands=(txt.match(/\d[\d ]{6,13}\d/g)||[]).map(s=>s.replace(/\D/g,'')).filter(s=>s.length>=7);
+    const cel=cands.find(s=>/^3\d{9}$/.test(s))||cands.sort((a,b)=>b.length-a.length)[0];
+    if(cel){$('dPhone').value=cel;renderCallRow();updatePhoneHint();toast('Teléfono detectado: '+cel);}
+    else toast('No se detectó un teléfono claro. Escríbelo a mano.');
+  }catch(e){console.error(e);toast('IA no disponible (revisa tu conexión).');}
+  finally{btn.innerHTML=old;btn.disabled=false;}
+}
+function gcalLink(){
+  if(!current)return null;const v=$('dVisita').value;if(!v)return null;
+  const start=new Date(v);if(isNaN(start))return null;const end=new Date(start.getTime()+3600000);
+  const fmt=d=>d.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');
+  const text=encodeURIComponent('Visita lote'+($('dDir').value?(' - '+$('dDir').value):''));
+  const det=encodeURIComponent(`Precio: ${$('dPrecio').value||'—'}\nTel: ${$('dPhone').value||'—'}\nPor qué vende: ${$('dPorque').value||'—'}`);
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${fmt(start)}/${fmt(end)}&details=${det}`;
+}
+async function saveDetail(){
+  if(!current)return;
+  const lat=parseFloat($('dLat').value),lon=parseFloat($('dLon').value);
+  const fields={phone:$('dPhone').value.trim(),dir:$('dDir').value.trim(),precio:$('dPrecio').value.trim(),
+    oper:$('dOper').value,porque:$('dPorque').value.trim(),visita:$('dVisita').value,
+    coords:(!isNaN(lat)&&!isNaN(lon))?{lat,lon,source:current.coords&&current.coords.source||'manual'}:current.coords};
+  await Backend.updateLot(current.id,fields);
+  await reload();closeDetail();toast('Guardado ✓');
+}
+async function deleteDetail(){
+  if(!current)return;if(!confirm('¿Eliminar esta foto y su información?'))return;
+  await Backend.deleteLot(current.id);await reload();closeDetail();toast('Eliminado');
+}
+
+/* ---------- Ajustes ---------- */
+function openSettings(){
+  const sel=$('sCity');sel.innerHTML=Object.keys(CITIES).map(c=>`<option ${c===(profile.city||DEFAULT_CITY)?'selected':''}>${c}</option>`).join('');
+  $('sEmail').value=me?me.email:'';
+  $('settingsModal').classList.remove('hidden');
+}
+async function saveSettings(){
+  profile.city=$('sCity').value;
+  await Backend.setProfile({city:profile.city});
+  const c=cityView();map.setView(c.c,c.z);
+  renderList();$('settingsModal').classList.add('hidden');toast('Ciudad: '+profile.city);
+}
+
+/* ---------- Carga ---------- */
+async function reload(){lots=await Backend.listLots();renderList();renderMap();}
+async function enterApp(){
+  profile=await Backend.getProfile();
+  if(!profile.city){profile.city=DEFAULT_CITY;await Backend.setProfile({city:DEFAULT_CITY});}
+  const c=cityView();map.setView(c.c,c.z);
+  $('authView').classList.add('hidden');$('appView').classList.remove('hidden');
+  setTimeout(()=>map.invalidateSize(),100);
+  await reload();
+}
+function showAuth(){$('appView').classList.add('hidden');$('authView').classList.remove('hidden');}
+
+/* ---------- Auth UI ---------- */
+function setAuthMode(m){authMode=m;$('tabLogin').classList.toggle('on',m==='login');$('tabSignup').classList.toggle('on',m==='signup');
+  $('aSubmit').textContent=m==='login'?'Ingresar':'Crear cuenta';$('aErr').textContent='';}
+async function doAuth(){
+  const email=$('aEmail').value.trim(),pass=$('aPass').value;
+  if(!email||!pass){$('aErr').textContent='Escribe correo y contraseña.';return;}
+  $('aErr').textContent='';const b=$('aSubmit');const old=b.textContent;b.innerHTML='<span class="spin"></span>';b.disabled=true;
+  try{ if(authMode==='login')await Backend.login(email,pass); else await Backend.signup(email,pass); }
+  catch(e){$('aErr').textContent=friendly(e);}
+  finally{b.textContent=old;b.disabled=false;}
+}
+function friendly(e){const m=(e&&e.message||''+e);
+  if(/invalid-credential|wrong-password|user-not-found/.test(m))return 'Correo o contraseña incorrectos.';
+  if(/email-already-in-use/.test(m))return 'Ese correo ya está registrado. Ingresa.';
+  if(/weak-password/.test(m))return 'La contraseña debe tener al menos 6 caracteres.';
+  if(/invalid-email/.test(m))return 'Correo inválido.';
+  return m.replace(/^Error:\s*/,'');}
+
+/* ===================== Init ===================== */
+(async function(){
+  initMap();
+  Backend = USE_FB ? await FirebaseBackend() : LocalBackend();
+  if(Backend.demo){$('demoBanner').classList.remove('hidden');$('aGoogle').classList.add('hidden');}
+  // eventos auth
+  $('tabLogin').onclick=()=>setAuthMode('login');
+  $('tabSignup').onclick=()=>setAuthMode('signup');
+  $('aSubmit').onclick=doAuth;
+  $('aPass').addEventListener('keydown',e=>{if(e.key==='Enter')doAuth();});
+  $('aGoogle').onclick=async()=>{try{await Backend.google();}catch(e){$('aErr').textContent=friendly(e);}};
+  // eventos app
+  $('btnUpload').onclick=()=>$('fileInput').click();
+  $('fileInput').onchange=e=>{handleFiles([...e.target.files]);e.target.value='';};
+  $('btnSettings').onclick=openSettings;
+  $('sClose').onclick=()=>$('settingsModal').classList.add('hidden');
+  $('sSave').onclick=saveSettings;
+  $('sLogout').onclick=()=>Backend.logout();
+  // detalle
+  $('dClose').onclick=closeDetail;
+  $('dDetect').onclick=detectPhone;
+  $('dPhone').addEventListener('input',()=>{renderCallRow();updatePhoneHint();});
+  $('dSave').onclick=saveDetail;
+  $('dDelete').onclick=deleteDetail;
+  $('dGcal').onclick=()=>{const u=gcalLink();if(!u){toast('Escribe fecha y hora de la visita');return;}window.open(u,'_blank');};
+  // sesión
+  Backend.onAuth(u=>{ me=u; if(u) enterApp(); else showAuth(); });
+})();
+</script>
+</body>
+</html>
