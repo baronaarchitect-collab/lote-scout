@@ -12,8 +12,7 @@
 window.appConfig = {
 
   // Link de pago de Wompi. Panel de Wompi → Links de pago → copiar la URL.
-  // Ej: "https://checkout.wompi.co/l/XXXXXX"
-  payUrl: "",
+  payUrl: "https://checkout.wompi.co/l/X8RQbV",
 
   // Backend de Apps Script para enviar informes por correo (termina en /exec).
   // Déjalo vacío y el botón simplemente descarga el informe.
