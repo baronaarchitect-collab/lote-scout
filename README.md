@@ -42,7 +42,14 @@ Las reglas (`firestore.rules`) **impiden que un usuario se auto-active** Pro; so
 2. Agrega/edita el campo **`plan`** con valor **`pro`** → Guardar.
 3. El usuario recarga la app y ya tiene Pro.
 
-### Cobro (opcional, para automatizar)
+### Activación automática al pagar (gratis, sin tarjeta)
+[`backend/wompi-webhook.gs`](backend/wompi-webhook.gs) recibe el webhook de Wompi y escribe
+`plan=pro` en Firestore, sin Cloud Functions ni plan Blaze. Verifica la firma SHA256 del evento,
+solo actúa con transacciones `APPROVED`, y busca al usuario por el campo `email` de su perfil.
+Si el comprador pagó con otro correo, te avisa para activarlo a mano. Pasos completos en el README
+de ese archivo.
+
+### Cobro manual (alternativa)
 - Pon un **enlace de pago** (Wompi, Bold, MercadoPago, Stripe…) en **Ajustes → Configuración avanzada → Enlace de pago**.
 - El MVP es **manual**: el usuario paga por ese enlace y tú activas su `plan=pro` (paso de arriba).
 - Para activación **automática** necesitarías un webhook del proveedor de pago que escriba `plan=pro` (con Firebase requiere Cloud Functions / plan Blaze, o un pequeño servidor).

@@ -485,7 +485,12 @@ async function saveSettings(){
 async function reload(){lots=await Backend.listLots();renderList();renderMap();}
 async function enterApp(){
   profile=await Backend.getProfile();
-  if(!profile.city){profile.city=DEFAULT_CITY;await Backend.setProfile({city:DEFAULT_CITY});}
+  // Guarda ciudad y correo en el perfil. El correo es la llave con la que el webhook
+  // de pago encuentra a este usuario para activarle el plan Pro.
+  const patch={};
+  if(!profile.city) patch.city=DEFAULT_CITY;
+  if(me&&me.email&&profile.email!==me.email.toLowerCase()) patch.email=me.email.toLowerCase();
+  if(Object.keys(patch).length){await Backend.setProfile(patch);Object.assign(profile,patch);}
   const c=cityView();map.setView(c.c,c.z);
   $('authView').classList.add('hidden');$('appView').classList.remove('hidden');
   setTimeout(()=>map.invalidateSize(),100);
