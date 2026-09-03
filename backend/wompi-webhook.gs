@@ -276,3 +276,15 @@ function diagnosticarIdentidad() {
   console.log('tokeninfo HTTP ' + res.getResponseCode());
   console.log(res.getContentText().slice(0, 600));
 }
+
+/* Prueba la ACTIVACION completa (lectura + escritura) sin pagar.
+   Cambia el correo por una cuenta de prueba tuya. Deja el plan en 'pro':
+   revierte a mano en Firestore si no lo quieres activo. */
+function probarActivacionCompleta() {
+  var email = 'barona.architect@gmail.com';
+  var uid = findUidByEmail_(email.toLowerCase());
+  if (!uid) { console.log('No encontre usuario con ' + email); return; }
+  console.log('Usuario encontrado: ' + uid);
+  setPlanPro_(uid, { id: 'PRUEBA-MANUAL' });
+  console.log('OK: plan=pro escrito. Revisa Firestore y recarga la app con esa cuenta.');
+}
