@@ -3,13 +3,16 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
-      // Crear su perfil: no puede autoasignarse un plan (queda 'free' o ausente)
+
+      // Crear su perfil: no puede autoasignarse un plan pago.
       allow create: if request.auth != null && request.auth.uid == uid
-                    && (!('plan' in request.resource.data) || request.resource.data.plan == 'free');
-      // Actualizar: el dueño puede cambiar su ciudad, etc., pero NO su plan.
-      // El plan Pro solo lo activa el administrador desde la consola de Firebase.
+                    && request.resource.data.get('plan', 'free') == 'free';
+
+      // Actualizar: puede cambiar ciudad, correo, etc., pero NO su plan.
+      // Usamos .get(campo, valor_por_defecto) porque leer un campo inexistente
+      // hace fallar la regla y bloquearia escrituras legitimas.
       allow update: if request.auth != null && request.auth.uid == uid
-                    && request.resource.data.plan == resource.data.plan;
+                    && request.resource.data.get('plan', 'free') == resource.data.get('plan', 'free');
 
       match /lots/{lotId} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
