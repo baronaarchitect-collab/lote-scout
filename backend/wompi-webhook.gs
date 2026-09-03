@@ -89,7 +89,7 @@ function getPath_(obj, path) {
 /* ==================== Acceso a Firestore (REST) ==================== */
 function getToken_() {
   var email = prop('SA_EMAIL');
-  var key = String(prop('SA_PRIVATE_KEY') || '').replace(/\\n/g, '\n');
+  var key = normalizePrivateKey_(prop('SA_PRIVATE_KEY'));
   if (!email || !key) throw new Error('Falta SA_EMAIL o SA_PRIVATE_KEY');
 
   var now = Math.floor(Date.now() / 1000);
@@ -201,4 +201,48 @@ function probarConexion() {
   var email = 'baronajuandavid@gmail.com';
   var uid = findUidByEmail_(email.toLowerCase());
   console.log(uid ? ('OK · usuario encontrado: ' + uid) : 'No se encontró usuario con ese correo');
+}
+
+/* ============ Normalizacion de la llave privada ============
+   El campo de Propiedades del script es de una sola linea, asi que la llave PEM
+   suele llegar deformada. Esto acepta las formas usuales de pegado: con \n
+   literales, con comillas envolventes, o con los saltos aplastados a espacios. */
+function normalizePrivateKey_(raw) {
+  var k = String(raw || '').trim();
+  if ((k.charAt(0) === '"' && k.charAt(k.length - 1) === '"') ||
+      (k.charAt(0) === "'" && k.charAt(k.length - 1) === "'")) {
+    k = k.substring(1, k.length - 1);
+  }
+  k = k.replace(/\n/g, '\n').replace(/\r/g, '');
+  if (k.indexOf('\n') === -1) {
+    var b = k.replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----/, '')
+             .replace(/-----END [A-Z ]*PRIVATE KEY-----/, '')
+             .replace(/\s+/g, '');
+    var lines = b.match(/.{1,64}/g) || [];
+    k = '-----BEGIN PRIVATE KEY-----\n' + lines.join('\n') + '\n-----END PRIVATE KEY-----\n';
+  }
+  if (k.indexOf('-----BEGIN') !== 0) {
+    throw new Error('SA_PRIVATE_KEY no parece una llave PEM. Debe empezar con -----BEGIN PRIVATE KEY-----');
+  }
+  return k;
+}
+
+/* Diagnostico: revisa la llave SIN mostrarla. Ejecutalo si algo falla. */
+function diagnosticarLlave() {
+  var raw = prop('SA_PRIVATE_KEY');
+  if (!raw) { console.log('FALTA: no existe la propiedad SA_PRIVATE_KEY'); return; }
+  console.log('Longitud del valor guardado: ' + raw.length + ' caracteres');
+  console.log('Empieza con comillas: ' + (raw.trim().charAt(0) === '"'));
+  console.log('Contiene barra-n literales: ' + (raw.indexOf('\n') !== -1));
+  try {
+    var k = normalizePrivateKey_(raw);
+    console.log('Lineas tras normalizar: ' + k.split('\n').length);
+    Utilities.computeRsaSha256Signature('prueba', k);
+    console.log('RESULTADO: la llave es valida y puede firmar.');
+  } catch (e) {
+    console.log('RESULTADO: la llave NO sirve -> ' + e.message);
+    console.log('Vuelve a copiar el campo private_key del JSON, completo, con BEGIN y END.');
+  }
+  console.log('SA_EMAIL: ' + (prop('SA_EMAIL') || 'FALTA'));
+  console.log('FIREBASE_PROJECT_ID: ' + (prop('FIREBASE_PROJECT_ID') || 'FALTA'));
 }
