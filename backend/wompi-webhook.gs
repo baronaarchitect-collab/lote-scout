@@ -262,3 +262,17 @@ function diagnosticarConsulta() {
   console.log('HTTP ' + res.getResponseCode());
   console.log(res.getContentText().slice(0, 1500));
 }
+
+/* Diagnostico: revela QUE identidad esta usando el token y con que alcance.
+   Sirve para detectar que el rol se otorgo a otra cuenta de servicio. */
+function diagnosticarIdentidad() {
+  console.log('SA_EMAIL en propiedades : ' + prop('SA_EMAIL'));
+  console.log('FIREBASE_PROJECT_ID     : ' + prop('FIREBASE_PROJECT_ID'));
+  var tok;
+  try { tok = getToken_(); } catch (e) { console.log('No se pudo obtener token: ' + e.message); return; }
+  console.log('Token obtenido OK (largo ' + tok.length + ')');
+  var res = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?access_token=' + encodeURIComponent(tok),
+                              { muteHttpExceptions: true });
+  console.log('tokeninfo HTTP ' + res.getResponseCode());
+  console.log(res.getContentText().slice(0, 600));
+}
