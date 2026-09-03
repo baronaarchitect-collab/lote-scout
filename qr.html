@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR de Lote Scout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --paper:#F3F6F4; --surface:#FFFFFF; --ink:#0F1F1B; --ink-2:#3B504A; --muted:#6C817A;
+    --line:#DAE4DF; --green:#0F6B4F; --green-ink:#0B4E3A; --green-soft:#E2EFE9;
+    --f-display:'Archivo','Helvetica Neue',Arial,sans-serif;
+    --f-body:'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
+    --f-mono:'IBM Plex Mono',Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#0B1412; --surface:#111D1A; --ink:#E9F1ED; --ink-2:#B2C5BE; --muted:#8CA299;
+      --line:#22332D; --green:#54C295; --green-ink:#8CDCB6; --green-soft:#123026;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0B1412; --surface:#111D1A; --ink:#E9F1ED; --ink-2:#B2C5BE; --muted:#8CA299;
+    --line:#22332D; --green:#54C295; --green-ink:#8CDCB6; --green-soft:#123026;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);
+       min-height:100vh;display:flex;align-items:center;justify-content:center;padding:28px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:18px;
+        padding:34px;max-width:460px;width:100%;text-align:center}
+  h1{font-family:var(--f-display);font-size:24px;font-weight:800;letter-spacing:-.02em;margin:0 0 6px}
+  .sub{color:var(--ink-2);font-size:14.5px;margin:0 0 24px}
+  #qr{display:inline-block;background:#fff;padding:16px;border-radius:14px;border:1px solid var(--line);line-height:0}
+  #qr img,#qr canvas{display:block;width:260px;height:260px}
+  .url{font-family:var(--f-mono);font-size:12.5px;color:var(--green-ink);word-break:break-all;
+       background:var(--green-soft);border-radius:9px;padding:10px 12px;margin:20px 0 22px}
+  .btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  button{font-family:var(--f-body);font-weight:600;font-size:14.5px;padding:12px 20px;border-radius:10px;
+         border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+  button.primary{background:var(--green);border-color:transparent;color:#fff}
+  button:hover{border-color:var(--green)}
+  button:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+  .hint{font-size:12.5px;color:var(--muted);margin-top:18px;line-height:1.5}
+  @media print{
+    body{background:#fff;padding:0}
+    .card{border:0;max-width:none}
+    .btns,.hint{display:none}
+    #qr{border:0}
+    #qr img,#qr canvas{width:340px;height:340px}
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Escanea para abrir Lote Scout</h1>
+    <p class="sub">Captura vallas, ubícalas en el mapa y llama al dueño.</p>
+    <div id="qr" aria-label="Código QR que abre Lote Scout"></div>
+    <div class="url" id="url"></div>
+    <div class="btns">
+      <button class="primary" id="dl">Descargar PNG</button>
+      <button id="pr">Imprimir</button>
+    </div>
+    <p class="hint">El PNG se descarga en 1188×1188 px con margen blanco incluido, listo para volantes, pendones o tarjetas.</p>
+  </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+  // Cambia esta URL si quieres apuntar el QR a otra parte.
+  var TARGET = 'https://baronaarchitect-collab.github.io/lote-scout/';
+  document.getElementById('url').textContent = TARGET;
+
+  // Se genera a 1024 px y se muestra escalado por CSS: asi el PNG descargado
+  // sirve para imprimir sin verse pixelado.
+  var qr = new QRCode(document.getElementById('qr'), {
+    text: TARGET,
+    width: 1024,
+    height: 1024,
+    colorDark: '#0F1F1B',
+    colorLight: '#FFFFFF',
+    correctLevel: QRCode.CorrectLevel.H   // alta correccion: tolera logos y desgaste al imprimir
+  });
+
+  document.getElementById('dl').addEventListener('click', function () {
+    var cv = document.querySelector('#qr canvas');
+    if (!cv) return;
+    // El estandar QR exige un margen blanco alrededor ("zona tranquila").
+    // Sin el, el codigo falla al escanearse sobre fondos de color.
+    var margen = Math.round(cv.width * 0.08);
+    var out = document.createElement('canvas');
+    out.width = cv.width + margen * 2;
+    out.height = cv.height + margen * 2;
+    var ctx = out.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(cv, margen, margen);
+    var a = document.createElement('a');
+    a.href = out.toDataURL('image/png');
+    a.download = 'qr-lote-scout.png';
+    a.click();
+  });
+
+  document.getElementById('pr').addEventListener('click', function () { window.print(); });
+</script>
+</body>
+</html>
