@@ -117,6 +117,7 @@ function getToken_() {
 
 function findUidByEmail_(email) {
   var pid = prop('FIREBASE_PROJECT_ID');
+  if (!pid) throw new Error('Falta FIREBASE_PROJECT_ID');
   var url = 'https://firestore.googleapis.com/v1/projects/' + pid + '/databases/(default)/documents:runQuery';
   var q = {
     structuredQuery: {
@@ -130,7 +131,12 @@ function findUidByEmail_(email) {
     headers: { Authorization: 'Bearer ' + getToken_() },
     payload: JSON.stringify(q), muteHttpExceptions: true
   });
-  var arr = JSON.parse(res.getContentText());
+  var code = res.getResponseCode();
+  var txt = res.getContentText();
+  // Antes cualquier error se confundia con 'no encontrado'. Ahora se ve.
+  if (code !== 200) throw new Error('Firestore respondio ' + code + ': ' + txt.slice(0, 300));
+  var arr = JSON.parse(txt);
+  if (!Array.isArray(arr)) throw new Error('Respuesta inesperada de Firestore: ' + txt.slice(0, 300));
   for (var i = 0; i < arr.length; i++) {
     if (arr[i].document && arr[i].document.name) {
       var n = arr[i].document.name;
@@ -245,4 +251,14 @@ function diagnosticarLlave() {
   }
   console.log('SA_EMAIL: ' + (prop('SA_EMAIL') || 'FALTA'));
   console.log('FIREBASE_PROJECT_ID: ' + (prop('FIREBASE_PROJECT_ID') || 'FALTA'));
+}
+
+/* Diagnostico: lista lo que hay realmente en la coleccion users. */
+function diagnosticarConsulta() {
+  var pid = prop('FIREBASE_PROJECT_ID');
+  console.log('FIREBASE_PROJECT_ID = ' + pid);
+  var url = 'https://firestore.googleapis.com/v1/projects/' + pid + '/databases/(default)/documents/users?pageSize=5';
+  var res = UrlFetchApp.fetch(url, { method: 'get', headers: { Authorization: 'Bearer ' + getToken_() }, muteHttpExceptions: true });
+  console.log('HTTP ' + res.getResponseCode());
+  console.log(res.getContentText().slice(0, 1500));
 }
