@@ -1,5 +1,5 @@
 /**
- * Lote Scout — Activación automática del plan Pro al recibir un pago de Wompi.
+ * LandX — Activación automática del plan Pro al recibir un pago de Wompi.
  * Google Apps Script (gratis, sin tarjeta). No requiere Cloud Functions ni plan Blaze.
  *
  * Flujo:
@@ -61,7 +61,7 @@ function doPost(e) {
   }
 }
 
-function doGet() { return _json({ ok: true, service: 'Lote Scout · Wompi webhook' }); }
+function doGet() { return _json({ ok: true, service: 'LandX · Wompi webhook' }); }
 
 /* ==================== Verificación de la firma ==================== */
 function verifyChecksum(body) {
@@ -170,13 +170,13 @@ function notifyCustomer_(email) {
   try {
     MailApp.sendEmail({
       to: email,
-      subject: 'Tu plan Pro de Lote Scout ya está activo',
+      subject: 'Tu plan Pro de LandX ya está activo',
       body: 'Listo, tu pago quedó confirmado y tu plan Pro está activo.\n\n' +
             'Recarga la app y ya vas a ver el botón "Analizar zona":\n' +
-            'https://baronaarchitect-collab.github.io/lote-scout/\n\n' +
+            'https://landx.lifecity.com.co/app/\n\n' +
             'Aquí están tus primeros pasos y tres formas de rentabilizarlo:\n' +
-            'https://baronaarchitect-collab.github.io/lote-scout/bienvenido.html\n\n' +
-            '— Lote Scout'
+            'https://landx.lifecity.com.co/bienvenido.html\n\n' +
+            '— LandX'
     });
   } catch (e) { log_('No se pudo avisar al cliente', String(e)); }
 }
@@ -187,7 +187,7 @@ function notifyAdmin_(asunto, t) {
   try {
     MailApp.sendEmail({
       to: admin,
-      subject: '[Lote Scout] ' + asunto,
+      subject: '[LandX] ' + asunto,
       body: 'Revisa y activa manualmente si corresponde.\n\n' +
             'Correo del comprador: ' + (t.customer_email || '—') + '\n' +
             'Transacción: ' + (t.id || '—') + '\n' +

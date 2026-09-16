@@ -1,5 +1,5 @@
 /**
- * Lote Scout — envío de informes por correo (Google Apps Script)
+ * LandX — envío de informes por correo (Google Apps Script)
  * Recibe {email, filename, subject, body, docBase64} y envía el .doc adjunto.
  *
  * Setup (una sola vez):
@@ -26,5 +26,5 @@ function doPost(e) {
     return _json({ ok: false, error: String(err) });
   }
 }
-function doGet() { return _json({ ok: true, service: 'Lote Scout report mailer' }); }
+function doGet() { return _json({ ok: true, service: 'LandX report mailer' }); }
 function _json(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }

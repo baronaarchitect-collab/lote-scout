@@ -1,5 +1,5 @@
 /* =========================================================================
-   CONFIGURACIÓN GLOBAL DE LOTE SCOUT
+   CONFIGURACIÓN GLOBAL DE LANDX
    -------------------------------------------------------------------------
    Estos valores aplican para TODOS los usuarios, en todos los dispositivos.
    (Antes vivían en localStorage y solo funcionaban en el navegador del admin.)

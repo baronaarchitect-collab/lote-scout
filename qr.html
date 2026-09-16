@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>QR de Lote Scout</title>
+<title>QR de LandX</title>
 <link rel="icon" type="image/svg+xml" href="logo.svg">
 <link rel="apple-touch-icon" href="logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -57,9 +57,9 @@
 <body>
   <div class="card">
     <img src="logo.svg" alt="" width="52" height="52" style="display:block;margin:0 auto 14px">
-    <h1>Escanea para abrir Lote Scout</h1>
+    <h1>Escanea y conoce LandX</h1>
     <p class="sub">Captura vallas, ubícalas en el mapa y llama al dueño.</p>
-    <div id="qr" aria-label="Código QR que abre Lote Scout"></div>
+    <div id="qr" aria-label="Código QR que abre LandX"></div>
     <div class="url" id="url"></div>
     <div class="btns">
       <button class="primary" id="dl">Descargar PNG</button>
@@ -71,7 +71,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
   // Cambia esta URL si quieres apuntar el QR a otra parte.
-  var TARGET = 'https://baronaarchitect-collab.github.io/lote-scout/';
+  var TARGET = 'https://landx.lifecity.com.co/';
   document.getElementById('url').textContent = TARGET;
 
   // Se genera a 1024 px y se muestra escalado por CSS: asi el PNG descargado
@@ -100,7 +100,7 @@
     ctx.drawImage(cv, margen, margen);
     var a = document.createElement('a');
     a.href = out.toDataURL('image/png');
-    a.download = 'qr-lote-scout.png';
+    a.download = 'qr-landx.png';
     a.click();
   });
 

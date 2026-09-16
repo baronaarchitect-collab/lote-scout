@@ -1,4 +1,4 @@
-# Lote Scout · CRM de vallas y lotes (multi-ciudad, con cuentas)
+# LandX · CRM de vallas y lotes (multi-ciudad, con cuentas)
 
 App web para captar propiedades a partir de fotos de **vallas de venta/renta**:
 
@@ -25,7 +25,7 @@ App web para captar propiedades a partir de fotos de **vallas de venta/renta**:
 5. Pega las reglas de seguridad en Firestore → pestaña **Reglas** → contenido de [`firestore.rules`](firestore.rules).
    (Garantizan que **cada usuario solo accede a lo suyo**.)
 6. En **Authentication → Settings → Dominios autorizados**, agrega el dominio de tu GitHub Pages
-   (`baronaarchitect-collab.github.io`) para que el login funcione en producción.
+   (`landx.lifecity.com.co` y `baronaarchitect-collab.github.io`) para que el login funcione en producción.
 
 Sube los cambios (`git push`) y listo: la app pasa automáticamente a cuentas reales.
 
@@ -69,7 +69,9 @@ Abre http://localhost:5190
 
 ## Archivos
 
-- `index.html` — la app completa (auth + mapa + subida + OCR + CRM + ajustes).
+- `index.html` — landing de marketing (https://landx.lifecity.com.co/).
+- `app/index.html` — la app completa (auth + mapa + subida + OCR + CRM + ajustes), en https://landx.lifecity.com.co/app/.
+- `bienvenido.html` — página tras el pago Pro. `qr.html` — código QR hacia la landing.
 - `firebase-config.js` — pega aquí tu config de Firebase.
 - `firestore.rules` — reglas de seguridad (cada quien ve solo lo suyo). Las fotos van comprimidas en Firestore; **no se usa Storage**.
 - `server.js` — mini-servidor local para pruebas.
