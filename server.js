@@ -1,7 +1,7 @@
 // Servidor estático mínimo para la app (sin dependencias)
 const http = require('http'), fs = require('fs'), path = require('path');
 const root = __dirname, port = process.env.PORT || 5178;
-const types = {'.html':'text/html;charset=utf-8','.js':'text/javascript','.css':'text/css','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml'};
+const types = {'.html':'text/html;charset=utf-8','.js':'text/javascript','.css':'text/css','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml','.mp4':'video/mp4','.jpg':'image/jpeg'};
 http.createServer((req,res)=>{
   let f = decodeURIComponent(req.url.split('?')[0]);
   if(f.endsWith('/')) f+='index.html';

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instala LandX en tu celular</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="apple-touch-icon" href="logo-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,600..900&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --paper:#F2F5F3; --surface:#FFFFFF; --ink:#0E1C18; --ink-2:#3A4E48; --muted:#687D76;
+  --line:#D6E0DB; --green:#0F6B4F; --green-ink:#0B4E3A; --green-soft:#DFEDE6;
+  --f-display:'Archivo','Arial Narrow',Arial,sans-serif;
+  --f-body:'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
+  --f-mono:'IBM Plex Mono',Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0A1311; --surface:#101C19; --ink:#E9F1ED; --ink-2:#B1C4BD; --muted:#8AA098;
+    --line:#21322C; --green:#56C497; --green-ink:#8FDDB8; --green-soft:#12302A;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0A1311; --surface:#101C19; --ink:#E9F1ED; --ink-2:#B1C4BD; --muted:#8AA098;
+  --line:#21322C; --green:#56C497; --green-ink:#8FDDB8; --green-soft:#12302A;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1040px;margin:0 auto;padding:0 22px}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--green);outline-offset:3px;border-radius:4px}
+.nav{display:flex;align-items:center;gap:10px;padding:18px 0;text-decoration:none;font-family:var(--f-display);font-weight:800;font-size:19px}
+.nav img{width:30px;height:30px}
+.layout{display:grid;grid-template-columns:minmax(0,400px) 1fr;gap:56px;align-items:start;padding:20px 0 70px}
+.video{position:sticky;top:20px;border-radius:26px;overflow:hidden;background:#0E1C18;border:1px solid var(--line);box-shadow:0 30px 70px -40px rgba(0,0,0,.6)}
+.video video{display:block;width:100%;height:auto;aspect-ratio:9/16;background:#0E1C18}
+.eyebrow{font-family:var(--f-mono);font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--green)}
+h1{font-family:var(--f-display);font-weight:900;font-stretch:74%;text-transform:uppercase;font-size:clamp(42px,6.4vw,76px);line-height:.92;margin:12px 0 16px;text-wrap:balance}
+.lede{color:var(--ink-2);max-width:48ch}
+.steps{list-style:none;margin:30px 0 0;padding:0;display:grid;gap:0;counter-reset:s;border-top:1px solid var(--line)}
+.steps li{display:grid;grid-template-columns:52px 1fr;gap:14px;padding:18px 0;border-bottom:1px solid var(--line)}
+.steps .n{font-family:var(--f-mono);font-weight:600;font-size:13px;color:var(--green);padding-top:3px}
+.steps b{display:block;font-weight:600;font-size:18px;margin-bottom:2px}
+.steps span{color:var(--ink-2);font-size:15.5px}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}
+.btn{display:inline-flex;align-items:center;justify-content:center;font-weight:600;font-size:15.5px;padding:13px 22px;border-radius:10px;text-decoration:none;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.btn.primary{background:var(--green);color:#fff;border-color:transparent}
+.btn:hover{border-color:var(--green)}
+.note{margin-top:26px;background:var(--green-soft);border-radius:12px;padding:16px 18px;font-size:15px;color:var(--ink)}
+.note b{font-weight:600}
+.android{margin-top:18px;font-size:15px;color:var(--ink-2)}
+.android b{color:var(--ink);font-weight:600}
+@media (max-width:820px){
+  .layout{grid-template-columns:1fr;gap:34px}
+  .video{position:static;max-width:380px;margin:0 auto;width:100%}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="nav" href="./"><img src="logo.svg" alt="">LandX</a>
+
+  <main class="layout">
+    <div class="video">
+      <video src="tutorial/landx-instalar-iphone.mp4" poster="tutorial/poster.jpg" controls playsinline muted loop preload="metadata"></video>
+    </div>
+
+    <div>
+      <div class="eyebrow">iPhone · 30 segundos</div>
+      <h1>Instala LandX en tu celular</h1>
+      <p class="lede">Deja LandX en tu pantalla de inicio y ábrelo con un toque, como cualquier app, cada vez que veas una valla.</p>
+
+      <ol class="steps">
+        <li><span class="n">01</span><div><b>Abre Safari y entra a LandX</b><span>Escribe landx.lifecity.com.co/app o toca el botón de abajo desde tu iPhone.</span></div></li>
+        <li><span class="n">02</span><div><b>Toca el botón Compartir</b><span>Es el cuadrado con una flecha hacia arriba, en la barra de Safari.</span></div></li>
+        <li><span class="n">03</span><div><b>Toca «Agregar a inicio»</b><span>Si no lo ves, desliza la lista hacia arriba. En algunas versiones de iOS dice «Agregar a pantalla de inicio».</span></div></li>
+        <li><span class="n">04</span><div><b>Revisa el nombre y toca «Agregar»</b><span>Debe decir LandX y mostrar el logo verde.</span></div></li>
+        <li><span class="n">05</span><div><b>Ábrelo desde tu pantalla de inicio</b><span>Inicia sesión una vez y queda listo para usar en la calle.</span></div></li>
+      </ol>
+
+      <div class="cta">
+        <a class="btn primary" href="./app/">Abrir LandX</a>
+        <a class="btn" href="tutorial/landx-instalar-iphone.mp4" download>Descargar video</a>
+      </div>
+
+      <p class="note"><b>Usa Safari.</b> Si abriste el enlace desde WhatsApp o Instagram, primero toca los tres puntos y elige «Abrir en Safari»: desde esos navegadores internos no aparece la opción de agregar a inicio.</p>
+      <p class="android"><b>¿Tienes Android?</b> Abre la app en Chrome, toca el menú ⋮ y elige «Agregar a la pantalla principal».</p>
+    </div>
+  </main>
+</div>
+</body>
+</html>
