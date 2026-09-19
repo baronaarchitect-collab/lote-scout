@@ -274,8 +274,21 @@ async function downloadDXF(lot){
   try{feats=await fetchLots(c[1],c[0]);}catch(e){console.warn('sin vecinos',e);}
   const dxf=buildDXF(lot,feats);if(!dxf){LX.toast('El lote no tiene geometría');return;}
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([dxf],{type:'application/dxf'}));
-  a.download='plano_lote_'+(lot.predio.npn||'cali').replace(/[^\w-]/g,'')+'.dxf';a.click();
-  LX.toast('Plano CAD descargado (.dxf, abre en AutoCAD)');
+  const filename='plano_lote_'+(lot.predio.npn||'cali').replace(/[^\w-]/g,'')+'.dxf';
+  a.download=filename;a.click();
+  // Copia automática al correo de la cuenta (si el backend de correo está configurado)
+  const to=LX.email(),url=LX.reportEndpoint();
+  if(!to||!url){LX.toast('Plano CAD descargado (.dxf, abre en AutoCAD)');return;}
+  const p=lot.predio;
+  const payload={email:to,filename,mimeType:'application/dxf',docBase64:btoa(unescape(encodeURIComponent(dxf))),
+    subject:'Plano CAD del lote '+(p.npn||'')+(p.direccion?' - '+p.direccion:''),
+    body:'Hola,\n\nAdjunto el plano CAD (.dxf) de la zona, con el lote resaltado, a escala real en metros, con las medidas de cada lado y el area.\n\n'+
+      'NPN: '+(p.npn||'s/d')+'\nDireccion: '+(p.direccion||'s/d')+'\nBarrio: '+(p.barrio||'s/d')+(p.comuna?' (Comuna '+p.comuna+')':'')+'\nArea: '+(p.area||'s/d')+' m2\n\n'+
+      'El .dxf se abre con AutoCAD, QGIS o LibreCAD. Gmail no lo previsualiza: descargalo y abrelo con un programa CAD.\n\n- Enviado desde LandX · landx.lifecity.com.co'};
+  LX.toast('Plano descargado. Enviando copia a '+to+'…');
+  try{await fetch(url,{method:'POST',body:JSON.stringify(payload)});LX.toast('Plano descargado y enviado a '+to+' ✓');}
+  catch(e){try{await fetch(url,{method:'POST',mode:'no-cors',body:JSON.stringify(payload)});LX.toast('Plano descargado y enviado a '+to+' ✓');}
+    catch(e2){LX.toast('Plano descargado. No se pudo enviar el correo.');}}
 }
 
 /* ===================== Masa normativa 3D (Pro) ===================== */

@@ -787,6 +787,7 @@ async function emailReport(){
   // Módulo Cali (catastro + plano CAD + masa normativa). Recibe un puente con lo que necesita de la app.
   const bridge={
     get current(){return current;}, isPro, showUpgrade, toast,
+    email:()=>(me&&me.email)||'', reportEndpoint,
     // Guarda campos en el lote abierto y refresca la lista/mapa sin cerrar el detalle
     async patchCurrent(fields){ if(!current)return; Object.assign(current,fields); await Backend.updateLot(current.id,fields);
       lots=await Backend.listLots(); renderList(); renderMap(); }
