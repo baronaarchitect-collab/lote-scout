@@ -31,17 +31,17 @@ function ringsOf(geom){const out=[];if(!geom)return out;
   else if(geom.type==='MultiPolygon')geom.coordinates.forEach(p=>p.forEach(r=>out.push(r)));return out;}
 function biggestRing(rings){let b=rings[0]||[];rings.forEach(r=>{if(r.length>b.length)b=r;});return b;}
 function centroid(geom){const r=biggestRing(ringsOf(geom));if(!r.length)return null;let x=0,y=0;r.forEach(p=>{x+=p[0];y+=p[1];});return [x/r.length,y/r.length];}
-function shoelace(p){let a=0;for(let i=0,j=p.length-1;i<p.length;j=i++)a+=p[j].x*p[i].z-p[i].x*p[j].z;return Math.abs(a/2);}
+export function shoelace(p){let a=0;for(let i=0,j=p.length-1;i<p.length;j=i++)a+=p[j].x*p[i].z-p[i].x*p[j].z;return Math.abs(a/2);}
 function signedArea(p){let a=0;for(let i=0,j=p.length-1;i<p.length;j=i++)a+=p[j].x*p[i].z-p[i].x*p[j].z;return a/2;}
 // Huella del lote en metros (x este, z sur) centrada en su centroide
-function footprintOf(geom){
+export function footprintOf(geom){
   const c=centroid(geom);if(!c)return {pts:[],c:null};
   let pts=biggestRing(ringsOf(geom)).map(p=>{const [x,y]=proj(p[0],p[1],c[0],c[1]);return {x,z:-y};});
   if(pts.length>2){const a=pts[0],b=pts[pts.length-1];if(Math.abs(a.x-b.x)<1e-6&&Math.abs(a.z-b.z)<1e-6)pts.pop();}
   return {pts,c};
 }
 // Retiro hacia adentro por bisectriz (tomado del estudio de masas de app.lifecity.com.co)
-function offsetPolygon(pts,dist){
+export function offsetPolygon(pts,dist){
   if(dist<=0)return pts.slice();const n=pts.length;if(n<3)return pts.slice();
   function build(sign,dd){const out=[];
     for(let i=0;i<n;i++){const prev=pts[(i-1+n)%n],cur=pts[i],next=pts[(i+1)%n];

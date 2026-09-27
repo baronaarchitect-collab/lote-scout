@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRM del proyecto · LandX</title>
+<link rel="icon" type="image/svg+xml" href="../logo.svg">
+<link rel="stylesheet" href="../lx-app.css">
+<style>
+.kan{display:grid;grid-template-columns:repeat(5,minmax(230px,1fr));gap:12px;overflow-x:auto;padding-bottom:10px;align-items:start}
+.col{background:var(--panel);border:1px solid var(--border);border-radius:14px;min-height:160px}
+.col.over{border-color:var(--accent2);background:#18283a}
+.col .ch{display:flex;align-items:center;gap:8px;padding:11px 12px;border-bottom:1px solid var(--border);font-weight:700;font-size:13.5px}
+.col .ch .c{margin-left:auto;font-size:12px;color:var(--muted);font-weight:600}
+.col .ch i{width:9px;height:9px;border-radius:50%;background:var(--k)}
+.col .cb{padding:10px;display:flex;flex-direction:column;gap:8px}
+.lead{background:var(--panel2);border:1px solid var(--border);border-left:3px solid var(--k);border-radius:10px;padding:10px;cursor:pointer;text-align:left;color:inherit;width:100%}
+.lead:hover{border-color:var(--accent2)}
+.lead b{display:block;font-size:14px}.lead span{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px}
+.kpi span{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}.kpi b{font-size:20px}
+.bar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.bar .tabs{margin:0;min-width:300px}
+.inv{margin-bottom:12px}.inv .top{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-bottom:10px}
+.inv .top b{font-size:15px}.inv .acts{margin-left:auto;display:flex;gap:6px}
+.pj{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit;margin-bottom:10px}
+.pj:hover{border-color:var(--accent2)}
+.callrow{display:flex;gap:8px;margin-bottom:12px}.callrow .btn{flex:1}
+</style>
+</head>
+<body>
+<div id="auth"></div>
+<div id="app" class="hidden">
+  <div class="topbar"><img src="../logo-sobre-oscuro.svg" alt="">
+    <div><h1 id="hTitle">CRM</h1><div class="sub" id="hSub"></div></div><div class="sp"></div>
+    <a class="btn sm" id="hPage" target="_blank">🌐 Página</a><a class="btn sm ghost" href="../app/">← LandX</a>
+    <button class="btn sm ghost" id="hOut">Salir</button></div>
+  <div class="wrap" id="main"></div>
+</div>
+
+<div id="leadModal" class="modal hidden"><div class="sheet">
+  <div class="hd"><h2 id="lmT">Interesado</h2><button class="iconbtn" id="lmX" aria-label="Cerrar">✕</button></div>
+  <div class="bd">
+    <div class="callrow" id="lmCall"></div>
+    <div class="row"><div class="field"><label>Nombre</label><input id="lmN" maxlength="80"></div><div class="field"><label>Celular</label><input id="lmC" inputmode="tel" maxlength="20"></div></div>
+    <div class="row"><div class="field"><label>Correo</label><input id="lmE" type="email" maxlength="120"></div><div class="field"><label>Etapa</label><select id="lmS"></select></div></div>
+    <div class="field"><label>Monto de interés</label><input id="lmM" maxlength="60"></div>
+    <div class="field"><label>Mensaje del interesado</label><textarea id="lmMsg" maxlength="600"></textarea></div>
+    <div class="field"><label>Notas de seguimiento</label><textarea id="lmNotes" maxlength="2000" style="min-height:110px" placeholder="Llamadas, acuerdos, próximos pasos…"></textarea></div>
+    <div class="hint" id="lmMeta" style="margin-bottom:12px"></div>
+    <div class="row"><button class="btn primary" id="lmSave" style="flex:2">Guardar</button><button class="btn danger" id="lmDel">Eliminar</button></div>
+  </div></div></div>
+
+<script src="../firebase-config.js"></script>
+<script type="module">
+import {getStore,esc,cop,normPhone,inversion,ETAPAS} from '../lx-store.js';
+import {requireAuth,toast} from '../lx-auth.js';
+
+const $=id=>document.getElementById(id);
+const id=new URLSearchParams(location.search).get('id')||'';
+const COL={nuevo:'#3aa0ff',contactado:'#e0a83b',interesado:'#a06bff',separo:'#5ee0a0',descartado:'#6b7b8f'};
+const fecha=t=>t?new Date(t).toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'}):'';
+let S,me,P,leads=[],invs=[],tab='leads',cur=null;
+
+(async()=>{
+  S=await getStore();
+  me=await requireAuth(S,{titulo:'CRM · LandX',sub:'Ingresa con tu cuenta de LandX para ver los interesados de tus proyectos.',signup:false});
+  $('app').classList.remove('hidden');$('hOut').onclick=()=>S.logout();
+  if(!id)return listProjects();
+  try{P=await S.get('projects/'+id);}catch(e){console.warn(e);}
+  if(!P||P.uid!==me.uid){$('main').innerHTML='<div class="empty">No encontramos este proyecto en tu cuenta.<br><br><a class="btn" href="./">Ver mis proyectos</a></div>';return;}
+  $('hTitle').textContent='CRM · '+P.titulo;$('hSub').textContent=[P.barrio,P.ciudad].filter(Boolean).join(' · ');
+  $('hPage').href='../p/?id='+encodeURIComponent(id);
+  $('lmS').innerHTML=ETAPAS.map(e=>`<option value="${e[0]}">${e[1]}</option>`).join('');
+  $('lmX').onclick=()=>$('leadModal').classList.add('hidden');$('lmSave').onclick=saveLead;$('lmDel').onclick=delLead;
+  await load();
+})();
+
+async function listProjects(){
+  $('hPage').classList.add('hidden');$('hTitle').textContent='Mis proyectos';
+  let ps=[];try{ps=await S.list('projects',{where:['uid','==',me.uid]});}catch(e){console.warn(e);}
+  $('main').innerHTML=ps.length?ps.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).map(p=>`<a class="card pj" href="?id=${encodeURIComponent(p.id)}">
+    <div style="flex:1"><b>${esc(p.titulo)}</b><div class="hint">${esc([p.barrio,p.ciudad].filter(Boolean).join(' · '))}</div></div>
+    <span class="pill ${p.published?'ok':''}">${p.published?'Publicado':'Borrador'}</span><span>›</span></a>`).join('')
+    :'<div class="empty">Aún no tienes proyectos publicados.<br>Abre un lote en LandX y toca «Crear página de inversión».</div>';
+}
+async function load(){
+  try{[leads,invs]=await Promise.all([S.list(`projects/${id}/leads`),S.list(`projects/${id}/investors`)]);}
+  catch(e){console.error(e);toast('No se pudieron cargar los datos.');}
+  leads.sort((a,b)=>(b.creado||0)-(a.creado||0));invs.sort((a,b)=>(b.creado||0)-(a.creado||0));
+  render();
+}
+function render(){
+  const v=inversion(P),rec=invs.reduce((s,i)=>s+(i.plan||[]).filter(p=>(i.pagados||[]).includes(p.n)).reduce((a,p)=>a+p.valor,0),0);
+  const pend=invs.reduce((s,i)=>s+(i.reportes||[]).filter(n=>!(i.pagados||[]).includes(n)).length,0);
+  let h=`<div class="kpis"><div class="kpi"><span>Interesados</span><b>${leads.length}</b></div>
+    <div class="kpi"><span>Inversionistas</span><b>${invs.length}</b></div>
+    <div class="kpi"><span>Participaciones disponibles</span><b>${P.disponibles!=null?P.disponibles:v.n} / ${v.n}</b></div>
+    <div class="kpi"><span>Recaudo confirmado</span><b>${cop(rec)}</b></div></div>
+  <div class="bar"><div class="tabs"><button id="tL" class="${tab==='leads'?'on':''}">Interesados</button>
+    <button id="tI" class="${tab==='invs'?'on':''}">Inversionistas${pend?' · '+pend+' por confirmar':''}</button></div><div style="flex:1"></div>
+    ${tab==='leads'?'<button class="btn sm" id="bAdd">＋ Agregar interesado</button><button class="btn sm ghost" id="bCsv">⇩ Exportar</button>':''}</div>`;
+  h+=tab==='leads'?kanban():investors();
+  $('main').innerHTML=h;
+  $('tL').onclick=()=>{tab='leads';render();};$('tI').onclick=()=>{tab='invs';render();};
+  if(tab==='leads'){
+    $('bAdd').onclick=()=>openLead(null);$('bCsv').onclick=exportCsv;
+    document.querySelectorAll('.lead').forEach(el=>{el.onclick=()=>openLead(leads.find(l=>l.id===el.dataset.id));
+      el.ondragstart=e=>e.dataTransfer.setData('text/plain',el.dataset.id);});
+    document.querySelectorAll('.col').forEach(c=>{c.ondragover=e=>{e.preventDefault();c.classList.add('over');};c.ondragleave=()=>c.classList.remove('over');
+      c.ondrop=async e=>{e.preventDefault();c.classList.remove('over');const l=leads.find(x=>x.id===e.dataTransfer.getData('text/plain'));
+        if(l&&l.etapa!==c.dataset.e){l.etapa=c.dataset.e;render();try{await S.set(`projects/${id}/leads/${l.id}`,{etapa:l.etapa});}catch(x){toast('No se pudo mover.');}}};});
+  }else{
+    document.querySelectorAll('[data-pay]').forEach(b=>b.onclick=()=>togglePay(b.dataset.pay,+b.dataset.n));
+    document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>removeInv(b.dataset.rm));
+  }
+}
+function kanban(){
+  if(!leads.length)return `<div class="empty">Aún no hay interesados.<br>Comparte la página del proyecto: cada formulario enviado aparece aquí.</div>`;
+  return '<div class="kan">'+ETAPAS.map(([k,n])=>{const l=leads.filter(x=>(x.etapa||'nuevo')===k);
+    return `<div class="col" data-e="${k}" style="--k:${COL[k]}"><div class="ch"><i></i>${n}<span class="c">${l.length}</span></div><div class="cb">
+      ${l.map(x=>`<button class="lead" draggable="true" data-id="${esc(x.id)}" style="--k:${COL[k]}"><b>${esc(x.nombre)||'Sin nombre'}</b>
+        <span>${esc(x.monto)||''}</span><span>${fecha(x.creado)}${x.notas?' · 📝':''}</span></button>`).join('')}</div></div>`;}).join('')+'</div>';
+}
+function investors(){
+  if(!invs.length)return `<div class="empty">Aún no hay inversionistas registrados.<br>Aparecen aquí cuando crean su cuenta en el portal del inversionista y eligen sus participaciones.</div>`;
+  return invs.map(i=>{const wa=normPhone(i.celular),pag=i.pagados||[],rep=i.reportes||[];
+    const tot=(i.plan||[]).reduce((s,p)=>s+p.valor,0),ok=(i.plan||[]).filter(p=>pag.includes(p.n)).reduce((s,p)=>s+p.valor,0);
+    return `<div class="card inv"><div class="top"><div><b>${esc(i.nombre)||esc(i.correo)}</b><div class="hint">${esc(i.correo)}${i.celular?' · '+esc(i.celular):''}</div>
+      <div class="hint">${i.participaciones} ${i.participaciones>1?'participaciones':'participación'} · ${cop(tot)} · pagado ${cop(ok)} · desde ${fecha(i.creado)}</div></div>
+      <div class="acts">${wa?`<a class="btn sm wa" href="https://wa.me/${wa}" target="_blank" rel="noopener">WhatsApp</a>`:''}<button class="btn sm danger" data-rm="${esc(i.id)}">Retirar</button></div></div>
+      <div class="scroll-x"><table class="t"><thead><tr><th>Concepto</th><th>Fecha</th><th class="n">Valor</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${(i.plan||[]).map(p=>{const pd=pag.includes(p.n),rp=rep.includes(p.n);
+        return `<tr><td>${esc(p.concepto)}</td><td>${fecha(p.fecha+'T12:00:00')}</td><td class="n">${cop(p.valor)}</td>
+        <td><span class="pill ${pd?'ok':rp?'warn':''}">${pd?'Pagado':rp?'Reportado por el inversionista':'Pendiente'}</span></td>
+        <td class="n"><button class="btn sm ${pd?'ghost':'primary'}" data-pay="${esc(i.id)}" data-n="${p.n}">${pd?'Deshacer':'Confirmar pago'}</button></td></tr>`;}).join('')}
+      </tbody></table></div></div>`;}).join('');
+}
+async function togglePay(iid,n){
+  const i=invs.find(x=>x.id===iid);if(!i)return;const pag=(i.pagados||[]).slice(),was=pag.includes(n);
+  const next=was?pag.filter(x=>x!==n):[...pag,n];
+  try{
+    await S.set(`projects/${id}/investors/${iid}`,{pagados:next});i.pagados=next;
+    // El primer pago del plan (la separación) es el que reserva las participaciones
+    if(i.plan.length&&n===i.plan[0].n){const v=inversion(P),d=(P.disponibles!=null?P.disponibles:v.n)+(was?i.participaciones:-i.participaciones);
+      P.disponibles=Math.max(0,Math.min(v.n,d));await S.set('projects/'+id,{disponibles:P.disponibles});}
+    toast(was?'Pago desmarcado':'Pago confirmado ✓');render();
+  }catch(e){console.error(e);toast('No se pudo actualizar el pago.');}
+}
+async function removeInv(iid){
+  const i=invs.find(x=>x.id===iid);if(!i||!confirm(`¿Retirar a ${i.nombre||i.correo} del proyecto? Se borra su plan de pagos.`))return;
+  try{if(i.plan.length&&(i.pagados||[]).includes(i.plan[0].n)){const v=inversion(P);P.disponibles=Math.min(v.n,(P.disponibles||0)+i.participaciones);await S.set('projects/'+id,{disponibles:P.disponibles});}
+    await S.del(`projects/${id}/investors/${iid}`);invs=invs.filter(x=>x.id!==iid);toast('Inversionista retirado');render();}
+  catch(e){console.error(e);toast('No se pudo retirar.');}
+}
+function openLead(l){
+  cur=l;$('lmT').textContent=l?(l.nombre||'Interesado'):'Nuevo interesado';
+  $('lmN').value=l?l.nombre||'':'';$('lmC').value=l?l.celular||'':'';$('lmE').value=l?l.correo||'':'';$('lmM').value=l?l.monto||'':'';
+  $('lmMsg').value=l?l.mensaje||'':'';$('lmNotes').value=l?l.notas||'':'';$('lmS').value=l?l.etapa||'nuevo':'nuevo';
+  $('lmMeta').textContent=l?`Registrado el ${fecha(l.creado)} · ${l.origen||''}`:'';$('lmDel').classList.toggle('hidden',!l);
+  const wa=l&&normPhone(l.celular);
+  $('lmCall').innerHTML=wa?`<a class="btn call" href="tel:+${wa}">📞 Llamar</a><a class="btn wa" href="https://wa.me/${wa}?text=${encodeURIComponent('Hola '+(l.nombre||'')+', te escribo por el proyecto '+P.titulo)}" target="_blank" rel="noopener">💬 WhatsApp</a>
+    ${l.correo?`<a class="btn" href="mailto:${esc(l.correo)}">✉️ Correo</a>`:''}`:'';
+  $('leadModal').classList.remove('hidden');
+}
+async function saveLead(){
+  const d={nombre:$('lmN').value.trim(),celular:$('lmC').value.trim(),correo:$('lmE').value.trim().toLowerCase(),monto:$('lmM').value.trim(),
+    mensaje:$('lmMsg').value.trim(),notas:$('lmNotes').value.trim(),etapa:$('lmS').value};
+  if(!d.nombre){toast('Escribe el nombre');return;}
+  try{if(cur){await S.set(`projects/${id}/leads/${cur.id}`,d);Object.assign(cur,d);}
+    else{const n={...d,origen:'Agregado a mano',creado:S.now()};n.id=await S.add(`projects/${id}/leads`,n);leads.unshift(n);}
+    $('leadModal').classList.add('hidden');toast('Guardado ✓');render();}
+  catch(e){console.error(e);toast('No se pudo guardar.');}
+}
+async function delLead(){
+  if(!cur||!confirm('¿Eliminar este interesado?'))return;
+  try{await S.del(`projects/${id}/leads/${cur.id}`);leads=leads.filter(l=>l.id!==cur.id);$('leadModal').classList.add('hidden');toast('Eliminado');render();}
+  catch(e){toast('No se pudo eliminar.');}
+}
+function exportCsv(){
+  const q=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"',et=Object.fromEntries(ETAPAS);
+  const rows=[['Nombre','Celular','Correo','Monto','Etapa','Mensaje','Notas','Fecha','Origen'],...leads.map(l=>[l.nombre,l.celular,l.correo,l.monto,et[l.etapa]||l.etapa,l.mensaje,l.notas,fecha(l.creado),l.origen])];
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+rows.map(r=>r.map(q).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'}));
+  a.download='interesados_'+id+'.csv';a.click();
+}
+</script>
+</body>
+</html>

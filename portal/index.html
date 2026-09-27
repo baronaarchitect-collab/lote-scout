@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portal del inversionista · LandX</title>
+<link rel="icon" type="image/svg+xml" href="../logo.svg">
+<link rel="stylesheet" href="../lx-app.css">
+<style>
+.wrap{max-width:760px}
+.sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.sum div{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px}
+.sum span{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}.sum b{font-size:19px}
+.next{border-color:var(--accent);margin-bottom:14px}
+.next h2{font-size:16px;margin:0 0 4px}.next .v{font-size:26px;font-weight:700;color:var(--ok);margin:4px 0 10px}
+.next .acts{display:flex;gap:8px;flex-wrap:wrap}.next .acts .btn{flex:1;min-width:150px}
+.prog{height:10px;border-radius:5px;background:var(--bg);overflow:hidden;margin:8px 0 4px}.prog span{display:block;height:100%;background:var(--accent)}
+.opt{display:flex;gap:8px;align-items:center}.opt button{width:42px;height:42px;font-size:20px}.opt b{font-size:24px;min-width:40px;text-align:center}
+</style>
+</head>
+<body>
+<div id="auth"></div>
+<div id="app" class="hidden">
+  <div class="topbar"><img src="../logo-sobre-oscuro.svg" alt="">
+    <div><h1 id="hTitle">Portal del inversionista</h1><div class="sub" id="hSub"></div></div><div class="sp"></div>
+    <a class="btn sm" id="hPage">← Proyecto</a><button class="btn sm ghost" id="hOut">Salir</button></div>
+  <div class="wrap" id="main"><div class="empty"><span class="spin"></span></div></div>
+</div>
+<script src="../firebase-config.js"></script>
+<script type="module">
+import {getStore,esc,cop,normPhone,inversion,planPagos} from '../lx-store.js';
+import {requireAuth,toast} from '../lx-auth.js';
+
+const $=id=>document.getElementById(id);
+const id=new URLSearchParams(location.search).get('id')||'';
+const fecha=s=>new Date(s+'T12:00:00').toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'});
+let S,me,P,I=null,k=1;
+
+(async()=>{
+  S=await getStore();
+  try{P=id?await S.get('projects/'+id):null;}catch(e){console.warn(e);}
+  if(!P){document.body.innerHTML='<div class="auth"><div class="card"><h1 style="font-size:19px;margin:0 0 8px">Proyecto no disponible</h1><p class="hint">El enlace no corresponde a un proyecto publicado.</p><a class="btn" href="../">Ir a LandX</a></div></div>';return;}
+  me=await requireAuth(S,{titulo:esc(P.titulo),sub:'Portal del inversionista. Crea tu cuenta para separar tu participación y consultar tu plan de pagos.'});
+  $('app').classList.remove('hidden');$('hOut').onclick=()=>S.logout();
+  $('hSub').textContent=P.titulo;$('hPage').href='../p/?id='+encodeURIComponent(id);
+  try{I=await S.get(`projects/${id}/investors/${me.uid}`);}catch(e){console.warn(e);}
+  I?plan():join();
+})();
+
+function join(){
+  const v=inversion(P),disp=P.disponibles!=null?P.disponibles:v.n;
+  if(!v.total){$('main').innerHTML='<div class="empty">El promotor aún no ha publicado los valores de la inversión.</div>';return;}
+  if(disp<1){$('main').innerHTML='<div class="empty">Todas las participaciones de este proyecto ya están separadas.<br>Escríbele al promotor para entrar a la lista de espera.</div>';return;}
+  k=Math.min(k,disp);
+  const pl=planPagos(P,k);
+  $('main').innerHTML=`<div class="card"><h2 style="margin:0 0 4px;font-size:18px">Separa tu participación</h2>
+    <p class="hint" style="margin:0 0 14px">Cada participación vale <b style="color:var(--text)">${cop(v.valor)}</b>. Hay ${disp} disponible${disp>1?'s':''} de ${v.n}.</p>
+    <div class="field"><label>¿Cuántas participaciones?</label><div class="opt"><button class="btn" id="kMinus" aria-label="Menos">−</button><b id="kVal">${k}</b><button class="btn" id="kPlus" aria-label="Más">＋</button>
+      <span class="hint" style="margin-left:8px">Total ${cop(v.valor*k)}</span></div></div>
+    <div class="row"><div class="field"><label for="jN">Nombre completo</label><input id="jN" maxlength="80" autocomplete="name"></div>
+      <div class="field"><label for="jC">Celular</label><input id="jC" inputmode="tel" maxlength="20" autocomplete="tel"></div></div>
+    <div class="field"><label>Tu plan de pagos</label><div class="scroll-x"><table class="t"><tbody>
+      ${pl.map(p=>`<tr><td>${esc(p.concepto)}</td><td>${fecha(p.fecha)}</td><td class="n">${cop(p.valor)}</td></tr>`).join('')}</tbody></table></div></div>
+    <label class="hint" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:14px"><input type="checkbox" id="jOk" style="margin-top:3px">
+      <span>Entiendo que esto registra mi intención de invertir y que la participación queda reservada cuando el promotor confirme mi primer pago. Autorizo el tratamiento de mis datos (Ley 1581 de 2012).</span></label>
+    <button class="btn primary" id="jGo" style="width:100%">Crear mi plan de pagos</button></div>`;
+  $('kMinus').onclick=()=>{if(k>1){k--;keep();}};$('kPlus').onclick=()=>{if(k<disp){k++;keep();}};
+  function keep(){const n=$('jN').value,c=$('jC').value,o=$('jOk').checked;join();$('jN').value=n;$('jC').value=c;$('jOk').checked=o;}
+  $('jGo').onclick=async()=>{
+    const nombre=$('jN').value.trim(),celular=$('jC').value.trim();
+    if(!nombre||!celular){toast('Escribe tu nombre y celular');return;}
+    if(!$('jOk').checked){toast('Marca la casilla para continuar');return;}
+    const d={uid:me.uid,correo:(me.email||'').toLowerCase(),nombre,celular,participaciones:k,valor:Math.round(v.valor),plan:planPagos(P,k),pagados:[],reportes:[],creado:S.now()};
+    $('jGo').disabled=true;
+    try{await S.set(`projects/${id}/investors/${me.uid}`,d,{merge:false});I={id:me.uid,...d};toast('Plan creado ✓');plan();}
+    catch(e){console.error(e);toast('No se pudo crear tu plan.');$('jGo').disabled=false;}
+  };
+}
+function plan(){
+  const pag=I.pagados||[],rep=I.reportes||[],pl=I.plan||[];
+  const tot=pl.reduce((s,p)=>s+p.valor,0),ok=pl.filter(p=>pag.includes(p.n)).reduce((s,p)=>s+p.valor,0);
+  const nx=pl.find(p=>!pag.includes(p.n)),wa=normPhone(P.whatsapp);
+  let h=`<div class="sum"><div><span>Participaciones</span><b>${I.participaciones}</b></div><div><span>Inversión total</span><b>${cop(tot)}</b></div>
+    <div><span>Pagado</span><b>${cop(ok)}</b></div><div><span>Saldo</span><b>${cop(tot-ok)}</b></div></div>
+    <div class="card" style="margin-bottom:14px"><div class="hint">Avance de pagos</div><div class="prog"><span style="width:${tot?ok/tot*100:0}%"></span></div>
+      <div class="hint">${pl.filter(p=>pag.includes(p.n)).length} de ${pl.length} pagos confirmados</div></div>`;
+  if(nx){const r=rep.includes(nx.n);
+    h+=`<div class="card next"><h2>${r?'Pago reportado':'Tu próximo pago'}</h2><div class="hint">${esc(nx.concepto)} · vence el ${fecha(nx.fecha)}</div><div class="v">${cop(nx.valor)}</div>
+      ${r?'<p class="hint" style="margin:0 0 10px">Avisaste que ya pagaste. El promotor lo confirmará en cuanto verifique el ingreso.</p>':''}
+      <div class="acts">${P.wompi&&!r?`<a class="btn primary" href="${esc(P.wompi)}" target="_blank" rel="noopener">Pagar con Wompi</a>`:''}
+        ${!r?'<button class="btn" id="bRep">Ya pagué, avisar</button>':''}
+        ${wa?`<a class="btn wa" href="https://wa.me/${wa}?text=${encodeURIComponent('Hola, soy '+I.nombre+', inversionista de '+P.titulo)}" target="_blank" rel="noopener">WhatsApp al promotor</a>`:''}</div>
+      ${P.wompi&&!r?`<p class="hint" style="margin:10px 0 0">En Wompi escribe el valor exacto (${cop(nx.valor)}) y usa el correo <b>${esc(I.correo)}</b>. El pago llega directo a la cuenta del promotor del proyecto.</p>`:''}</div>`;
+  }else h+='<div class="card next"><h2>¡Plan completo!</h2><p class="hint" style="margin:6px 0 0">Todos tus pagos están confirmados.</p></div>';
+  h+=`<div class="card"><div class="scroll-x"><table class="t"><thead><tr><th>Concepto</th><th>Fecha</th><th class="n">Valor</th><th>Estado</th></tr></thead><tbody>
+    ${pl.map(p=>{const pd=pag.includes(p.n),rp=rep.includes(p.n);return `<tr><td>${esc(p.concepto)}</td><td>${fecha(p.fecha)}</td><td class="n">${cop(p.valor)}</td>
+      <td><span class="pill ${pd?'ok':rp?'warn':''}">${pd?'Pagado':rp?'Por confirmar':'Pendiente'}</span></td></tr>`;}).join('')}</tbody></table></div></div>
+    <p class="hint" style="margin-top:14px">Los pagos los recibe y confirma el promotor del proyecto${P.contacto?' ('+esc(P.contacto)+')':''}. LandX no recibe ni administra dinero de los inversionistas.</p>`;
+  $('main').innerHTML=h;
+  if($('bRep'))$('bRep').onclick=async()=>{const next=[...new Set([...rep,nx.n])];
+    try{await S.set(`projects/${id}/investors/${me.uid}`,{reportes:next});I.reportes=next;toast('Aviso enviado al promotor ✓');plan();}
+    catch(e){console.error(e);toast('No se pudo enviar el aviso.');}};
+}
+</script>
+</body>
+</html>

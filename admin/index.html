@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Admin · Sondeos Airbnb · LandX</title>
+<link rel="icon" type="image/svg+xml" href="../logo.svg">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="../lx-app.css">
+<style>
+.req{display:flex;gap:12px;align-items:center;margin-bottom:10px;cursor:pointer;width:100%;text-align:left;color:inherit}
+.req:hover{border-color:var(--accent2)}
+.grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:14px;align-items:start}
+@media(max-width:980px){.grid{grid-template-columns:1fr}}
+#map{height:420px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:#0a0f15}
+.comp{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px}
+.comp.on{border-color:var(--accent)}
+.comp .field{margin-bottom:8px}.comp .field input{padding:8px 10px;font-size:14px}
+.comp .hd{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-weight:700;font-size:13px}
+.am{display:flex;flex-wrap:wrap;gap:5px}.am label{font-size:11.5px;border:1px solid var(--border);border-radius:20px;padding:3px 9px;cursor:pointer;color:var(--muted);user-select:none}
+.am input{position:absolute;opacity:0;pointer-events:none}.am label:has(input:checked){background:var(--accent);border-color:transparent;color:#fff}
+.am label:has(input:focus-visible){outline:2px solid var(--accent2)}
+.ab-tip{background:#fff;color:#111;border:0;border-radius:6px;font-weight:700;font-size:11px;padding:2px 6px}.ab-tip:before{display:none}.ab-tip-main{background:#0F6B4F;color:#fff}
+.sticky{position:sticky;bottom:0;background:var(--bg);padding:12px 0;display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--border);margin-top:10px}
+</style>
+</head>
+<body>
+<div id="auth"></div>
+<div id="app" class="hidden">
+  <div class="topbar"><img src="../logo-sobre-oscuro.svg" alt=""><div><h1>Admin · Sondeos Airbnb</h1><div class="sub" id="hSub"></div></div><div class="sp"></div>
+    <button class="btn sm ghost hidden" id="hBack">← Solicitudes</button><button class="btn sm ghost" id="hOut">Salir</button></div>
+  <div class="wrap" id="main"></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="../firebase-config.js"></script>
+<script type="module">
+import {getStore,esc,cop,num} from '../lx-store.js';
+import {requireAuth,toast} from '../lx-auth.js';
+import {AMENIDADES,stats} from '../lx-airbnb.js';
+
+const $=id=>document.getElementById(id);
+const fecha=t=>t?new Date(t).toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'}):'';
+let S,me,reqs=[],R=null,comps=[],active=-1,map,layer;
+
+(async()=>{
+  S=await getStore();me=await requireAuth(S,{titulo:'Admin · LandX',sub:'Solo para administradores de Life City.',signup:false});
+  $('app').classList.remove('hidden');$('hOut').onclick=()=>S.logout();$('hSub').textContent=me.email;
+  if(!S.isAdmin()){$('main').innerHTML='<div class="empty">Esta cuenta no es administradora.</div>';return;}
+  $('hBack').onclick=list;list();
+})();
+
+async function list(){
+  R=null;$('hBack').classList.add('hidden');$('main').innerHTML='<div class="empty"><span class="spin"></span></div>';
+  try{reqs=await S.list('airbnb');}catch(e){console.error(e);$('main').innerHTML='<div class="empty">No se pudieron leer las solicitudes. Revisa que las reglas de Firestore estén publicadas.</div>';return;}
+  reqs.sort((a,b)=>(a.status==='listo')-(b.status==='listo')||(b.createdAt||0)-(a.createdAt||0));
+  const pend=reqs.filter(r=>r.status!=='listo').length;
+  $('main').innerHTML=`<p class="hint" style="margin:0 0 12px">${pend} solicitud${pend===1?'':'es'} pendiente${pend===1?'':'s'} · ${reqs.length-pend} entregada${reqs.length-pend===1?'':'s'}</p>`+
+    (reqs.length?reqs.map((r,i)=>`<button class="card req" data-i="${i}"><div style="flex:1"><b>${esc(r.dir)||'Lote sin dirección'}</b>
+      <div class="hint">${esc(r.email)} · ${esc(r.ciudad)||''} · ${(+r.coords.lat).toFixed(5)}, ${(+r.coords.lon).toFixed(5)}</div>
+      <div class="hint">Pedido el ${fecha(r.createdAt)}${r.doneAt?' · entregado el '+fecha(r.doneAt):''} · ${(r.comps||[]).length} comparables</div></div>
+      <span class="pill ${r.status==='listo'?'ok':'warn'}">${r.status==='listo'?'Entregado':'Pendiente'}</span></button>`).join(''):'<div class="empty">No hay solicitudes todavía.</div>');
+  document.querySelectorAll('.req').forEach(b=>b.onclick=()=>edit(reqs[+b.dataset.i]));
+}
+
+function airbnbUrl(c){const d=.012;return `https://www.airbnb.com/s/homes?search_type=user_map_move&search_by_map=true&zoom=14&ne_lat=${(c.lat+d).toFixed(5)}&ne_lng=${(c.lon+d).toFixed(5)}&sw_lat=${(c.lat-d).toFixed(5)}&sw_lng=${(c.lon-d).toFixed(5)}`;}
+function edit(r){
+  R=r;comps=JSON.parse(JSON.stringify(r.comps||[]));active=-1;$('hBack').classList.remove('hidden');
+  $('main').innerHTML=`<div class="card" style="margin-bottom:14px"><b>${esc(r.dir)||'Lote sin dirección'}</b> <span class="pill ${r.status==='listo'?'ok':'warn'}">${r.status==='listo'?'Entregado':'Pendiente'}</span>
+    <div class="hint">${esc(r.email)} · ${esc(r.ciudad)||''}${r.npn?' · NPN '+esc(r.npn):''}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><a class="btn sm" href="${airbnbUrl(r.coords)}" target="_blank" rel="noopener">Abrir Airbnb en la zona ↗</a>
+      <a class="btn sm" href="https://www.google.com/maps?q=${r.coords.lat},${r.coords.lon}" target="_blank" rel="noopener">Google Maps ↗</a>
+      <button class="btn sm ghost" id="bCopy">Copiar encargo para Claude</button></div></div>
+  <div class="grid"><div>
+    <div id="comps"></div>
+    <button class="btn" id="bAdd" style="width:100%">＋ Agregar comparable</button>
+    <details style="margin-top:12px"><summary class="hint" style="cursor:pointer">Pegar comparables en JSON</summary>
+      <div class="field" style="margin-top:8px"><textarea id="json" style="min-height:140px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px" placeholder='[{"nombre":"Loft en Miraflores","zona":"Miraflores","rating":4.77,"resenas":13,"precio":165000,"lat":3.44,"lon":-76.54,"url":"https://www.airbnb.com/rooms/…","amen":["wifi","cocina","aire"]}]'></textarea></div>
+      <div class="hint" style="margin-bottom:8px">Claves de amenidades: ${AMENIDADES.map(a=>a[0]).join(', ')}. Usa <code>"amen":null</code> si no leíste la ficha.</div>
+      <div class="row"><button class="btn sm" id="bJsonAdd">Agregar a la lista</button><button class="btn sm ghost" id="bJsonRep">Reemplazar la lista</button></div></details>
+  </div><div>
+    <div id="map"></div><div class="hint" style="margin:8px 0 14px">Selecciona un comparable y haz clic en el mapa para ubicarlo. Airbnb solo muestra la zona aproximada.</div>
+    <div class="card" id="sum" style="margin-bottom:12px"></div>
+    <div class="field"><label>Lo que dicen las reseñas (texto para el cliente)</label><textarea id="notas" maxlength="1500" style="min-height:120px" placeholder="Etiquetas más repetidas, lo que más valoran y las quejas frecuentes.">${esc(r.notas)}</textarea></div>
+  </div></div>
+  <div class="sticky"><button class="btn" id="bDraft">Guardar borrador</button><button class="btn primary" id="bDone">Publicar análisis al usuario</button>
+    <span class="hint" style="align-self:center">Al publicar, el usuario lo ve en el botón Airbnb de su lote.</span></div>`;
+  map=L.map('map').setView([r.coords.lat,r.coords.lon],15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+  L.circleMarker([r.coords.lat,r.coords.lon],{radius:11,color:'#fff',weight:3,fillColor:'#0F6B4F',fillOpacity:1}).addTo(map).bindTooltip('Predio',{permanent:true,direction:'bottom',className:'ab-tip ab-tip-main'});
+  layer=L.layerGroup().addTo(map);
+  map.on('click',e=>{if(active<0){toast('Selecciona primero un comparable');return;}read();comps[active].lat=+e.latlng.lat.toFixed(6);comps[active].lon=+e.latlng.lng.toFixed(6);draw();});
+  $('bAdd').onclick=()=>{read();comps.push({nombre:'',zona:'',rating:'',resenas:'',precio:'',lat:'',lon:'',url:'',amen:[]});active=comps.length-1;draw();};
+  $('bJsonAdd').onclick=()=>importJson(false);$('bJsonRep').onclick=()=>importJson(true);
+  $('bDraft').onclick=()=>save(false);$('bDone').onclick=()=>save(true);
+  $('bCopy').onclick=()=>navigator.clipboard.writeText(`Haz un sondeo de Airbnb alrededor de ${r.coords.lat}, ${r.coords.lon} (${r.dir||'lote'}, ${r.ciudad||''}). Busca en ${airbnbUrl(r.coords)} y devuélveme un arreglo JSON de comparables con las claves nombre, zona, rating, resenas, precio (COP por noche), lat, lon, url y amen (claves: ${AMENIDADES.map(a=>a[0]).join(', ')}; null si no leíste la ficha). Agrega un resumen de lo que dicen las reseñas.`).then(()=>toast('Encargo copiado'));
+  draw();
+}
+function draw(){
+  $('comps').innerHTML=comps.length?comps.map((c,i)=>`<div class="comp ${i===active?'on':''}" data-i="${i}">
+    <div class="hd"><span>#${i+1}</span><span class="hint" style="font-weight:400">${c.lat&&c.lon?'📍 ubicado':'sin ubicar'}</span><span style="flex:1"></span>
+      <button class="btn sm ${i===active?'primary':''}" data-sel="${i}">${i===active?'Seleccionado':'Seleccionar'}</button><button class="btn sm danger" data-del="${i}">✕</button></div>
+    <div class="row"><div class="field" style="flex:2"><input data-f="nombre" placeholder="Nombre del anuncio" value="${esc(c.nombre)}" maxlength="90"></div>
+      <div class="field"><input data-f="zona" placeholder="Zona" value="${esc(c.zona)}" maxlength="50"></div></div>
+    <div class="row"><div class="field"><input data-f="precio" inputmode="numeric" placeholder="COP / noche" value="${esc(c.precio)}"></div>
+      <div class="field"><input data-f="rating" inputmode="decimal" placeholder="Calificación" value="${esc(c.rating)}"></div>
+      <div class="field"><input data-f="resenas" inputmode="numeric" placeholder="N.º reseñas" value="${esc(c.resenas)}"></div></div>
+    <div class="field"><input data-f="url" placeholder="Link del anuncio" value="${esc(c.url)}"></div>
+    <label class="hint" style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><input type="checkbox" data-ficha ${Array.isArray(c.amen)?'checked':''}> Leí la ficha de servicios completa</label>
+    <div class="am ${Array.isArray(c.amen)?'':'hidden'}">${AMENIDADES.map(a=>`<label><input type="checkbox" data-a="${a[0]}" ${Array.isArray(c.amen)&&c.amen.includes(a[0])?'checked':''}>${a[1]}</label>`).join('')}</div>
+  </div>`).join(''):'<div class="empty">Sin comparables. Agrégalos uno por uno o pega el JSON.</div>';
+  document.querySelectorAll('[data-sel]').forEach(b=>b.onclick=()=>{read();active=+b.dataset.sel;draw();});
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{read();comps.splice(+b.dataset.del,1);active=-1;draw();});
+  document.querySelectorAll('[data-ficha]').forEach(b=>b.onchange=()=>{read();draw();});
+  document.querySelectorAll('.comp input').forEach(i=>i.addEventListener('change',()=>{read();summary();}));
+  layer.clearLayers();
+  comps.forEach((c,i)=>{if(!c.lat||!c.lon)return;L.circleMarker([+c.lat,+c.lon],{radius:i===active?10:7,color:'#fff',weight:2,fillColor:i===active?'#e0a83b':'#FF5A5F',fillOpacity:1}).addTo(layer)
+    .bindTooltip('#'+(i+1)+(num(c.precio)?' · '+cop(num(c.precio)):''),{permanent:true,direction:'top',className:'ab-tip'}).on('click',()=>{read();active=i;draw();});});
+  summary();
+}
+// Pasa lo escrito en pantalla al arreglo comps
+function read(){
+  document.querySelectorAll('.comp').forEach(el=>{const c=comps[+el.dataset.i];if(!c)return;
+    el.querySelectorAll('[data-f]').forEach(i=>c[i.dataset.f]=i.value.trim());
+    c.amen=el.querySelector('[data-ficha]').checked?[...el.querySelectorAll('[data-a]:checked')].map(i=>i.dataset.a):null;});
+}
+const clean=()=>comps.filter(c=>c.nombre).map(c=>({nombre:c.nombre,zona:c.zona||'',rating:c.rating?+String(c.rating).replace(',','.'):0,resenas:Math.round(num(c.resenas)),
+  precio:Math.round(num(c.precio)),lat:c.lat?+c.lat:0,lon:c.lon?+c.lon:0,url:/^https:\/\//.test(c.url||'')?c.url:'',amen:Array.isArray(c.amen)?c.amen:null}));
+function summary(){const s=stats(clean());
+  $('sum').innerHTML=`<div class="hint">Resumen</div><b>${s.total}</b> comparables · <b>${s.nPrecio}</b> con precio · <b>${s.nFicha}</b> con ficha · <b>${clean().filter(c=>c.lat&&c.lon).length}</b> ubicados
+    ${s.nPrecio?`<div style="margin-top:6px">Mediana <b>${cop(s.mediana)}</b> · rango ${cop(s.min)} – ${cop(s.max)}</div>`:''}`;}
+function importJson(replace){
+  let a;try{a=JSON.parse($('json').value);if(!Array.isArray(a))a=a.comps||a.comparables;if(!Array.isArray(a))throw 0;}catch(e){toast('El JSON no es válido. Debe ser un arreglo de comparables.');return;}
+  read();const keys=AMENIDADES.map(x=>x[0]);
+  const n=a.map(c=>({nombre:String(c.nombre||c.name||'').slice(0,90),zona:String(c.zona||'').slice(0,50),rating:c.rating||'',resenas:c.resenas||c.reviews||'',precio:c.precio||c.price||'',
+    lat:c.lat||'',lon:c.lon||c.lng||'',url:c.url||'',amen:Array.isArray(c.amen)?c.amen.filter(k=>keys.includes(k)):null})).filter(c=>c.nombre);
+  comps=replace?n:comps.concat(n);active=-1;$('json').value='';draw();toast(n.length+' comparable(s) cargado(s)');
+}
+async function save(done){
+  read();const list=clean();
+  if(done&&!list.length){toast('Agrega al menos un comparable con nombre');return;}
+  if(done&&list.some(c=>!c.lat||!c.lon)&&!confirm('Hay comparables sin ubicar: no saldrán en el mapa. ¿Publicar de todos modos?'))return;
+  const d={comps:list,notas:$('notas').value.trim(),updatedBy:me.email};
+  if(done){d.status='listo';d.doneAt=S.now();}
+  try{await S.set('airbnb/'+R.id,d);Object.assign(R,d);toast(done?'Análisis publicado ✓':'Borrador guardado ✓');if(done)list_();}
+  catch(e){console.error(e);toast('No se pudo guardar.');}
+}
+const list_=()=>list();
+</script>
+</body>
+</html>

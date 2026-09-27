@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proyecto de inversión · LandX</title>
+<meta name="description" content="Proyecto de inversión inmobiliaria en rentas cortas.">
+<link rel="icon" type="image/svg+xml" href="../logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<style>
+:root{
+  --paper:#F2F5F3; --surface:#FFFFFF; --surface-2:#E8EFEB; --ink:#0E1C18; --ink-2:#3A4E48; --muted:#687D76;
+  --line:#D6E0DB; --line-strong:#BFCEC7; --green:#0F6B4F; --green-ink:#0B4E3A; --green-soft:#DFEDE6;
+  --band:#0E1C18; --band-ink:#E9F1ED; --band-muted:#9DB2AA; --band-line:#243731; --band-accent:#5CCB9C;
+  --shadow:0 1px 2px rgba(14,28,24,.06),0 24px 60px -30px rgba(14,28,24,.45);
+  --f-display:'Archivo','Arial Narrow','Helvetica Neue',Arial,sans-serif;
+  --f-body:'IBM Plex Sans','Segoe UI',system-ui,sans-serif; --f-mono:'IBM Plex Mono',Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --paper:#0A1311; --surface:#101C19; --surface-2:#15231F; --ink:#E9F1ED; --ink-2:#B1C4BD; --muted:#8AA098;
+  --line:#21322C; --line-strong:#2D423B; --green:#56C497; --green-ink:#8FDDB8; --green-soft:#12302A;
+  --band:#E6EFEA; --band-ink:#0E1C18; --band-muted:#4E635C; --band-line:#C7D6CF; --band-accent:#0F6B4F;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 24px 60px -30px rgba(0,0,0,.9); } }
+:root[data-theme="dark"]{
+  --paper:#0A1311; --surface:#101C19; --surface-2:#15231F; --ink:#E9F1ED; --ink-2:#B1C4BD; --muted:#8AA098;
+  --line:#21322C; --line-strong:#2D423B; --green:#56C497; --green-ink:#8FDDB8; --green-soft:#12302A;
+  --band:#E6EFEA; --band-ink:#0E1C18; --band-muted:#4E635C; --band-line:#C7D6CF; --band-accent:#0F6B4F;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 24px 60px -30px rgba(0,0,0,.9); }
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--f-display);margin:0;text-wrap:balance}
+a{color:inherit}
+img{max-width:100%}
+:focus-visible{outline:2px solid var(--green);outline-offset:3px;border-radius:4px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 22px}
+.hidden{display:none!important}
+.nav{display:flex;align-items:center;gap:18px;padding:16px 0}
+.nav .name{font-family:var(--f-display);font-weight:800;font-size:19px;text-decoration:none;margin-right:auto}
+.nav a.link{font-size:15px;color:var(--ink-2);text-decoration:none}
+.nav a.link:hover{color:var(--ink)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--f-body);font-weight:600;font-size:15.5px;padding:13px 22px;border-radius:10px;text-decoration:none;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);cursor:pointer}
+.btn:hover{border-color:var(--green)}
+.btn.primary{background:var(--green);color:#fff;border-color:transparent}
+:root[data-theme="dark"] .btn.primary{color:#06231A}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn.primary{color:#06231A}}
+.btn.sm{padding:9px 16px;font-size:14.5px}
+.btn:disabled{opacity:.6;cursor:progress}
+.eyebrow{font-family:var(--f-mono);font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--green)}
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center;padding:34px 0 64px}
+.hero h1{font-weight:900;font-stretch:74%;text-transform:uppercase;font-size:clamp(40px,6vw,78px);line-height:.93;margin:14px 0 18px}
+.hero .lede{color:var(--ink-2);font-size:18px;max-width:54ch;white-space:pre-line}
+.hero .cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}
+.hero .cover{border-radius:18px;overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--line);aspect-ratio:4/3;background:var(--surface-2)}
+.hero .cover img{width:100%;height:100%;object-fit:cover;display:block}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:34px}
+.fact{padding:18px 16px 18px 0}
+.fact b{display:block;font-family:var(--f-display);font-weight:800;font-stretch:80%;font-size:30px;line-height:1.05}
+.fact span{font-size:13.5px;color:var(--muted)}
+section{padding:68px 0;border-top:1px solid var(--line)}
+.shead{max-width:720px;margin-bottom:30px}
+.shead h2{font-weight:800;font-stretch:80%;font-size:clamp(28px,4vw,44px);line-height:1.05;margin:10px 0 12px}
+.shead p{color:var(--ink-2);margin:0}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.gallery button{padding:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;aspect-ratio:4/3;background:var(--surface-2);cursor:zoom-in}
+.gallery img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s}
+.gallery button:hover img{transform:scale(1.04)}
+.videos{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:16px}
+.videos iframe{width:100%;aspect-ratio:16/9;border:0;border-radius:14px;background:#000}
+.lightbox{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out}
+.lightbox img{max-width:100%;max-height:100%;border-radius:8px}
+.map{height:420px;border-radius:16px;overflow:hidden;border:1px solid var(--line);background:var(--surface-2)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}
+.env h4{font-size:15px;margin:18px 0 6px;font-weight:700}.env h4:first-child{margin-top:0}
+.env .it{display:flex;justify-content:space-between;gap:12px;font-size:15px;padding:7px 0;border-bottom:1px solid var(--line)}
+.env .it span:last-child{font-family:var(--f-mono);font-size:13px;color:var(--muted);white-space:nowrap}
+.viewer{position:relative;height:440px;border-radius:16px;overflow:hidden;border:1px solid var(--line);background:#05080d}
+.viewer canvas{width:100%;height:100%;display:block;touch-action:none}
+.viewer .hud{position:absolute;left:14px;bottom:12px;font-family:var(--f-mono);font-size:12px;color:#9DB2AA;pointer-events:none}
+.masa-table{width:100%;border-collapse:collapse;font-size:15px}
+.masa-table td{padding:9px 0;border-bottom:1px solid var(--line)}.masa-table td:last-child{text-align:right;font-weight:600}
+/* estudio Airbnb */
+.ab-kpis{display:grid;grid-template-columns:1.1fr 1.5fr 1fr;gap:12px;margin:22px 0 12px}
+.ab-kpi{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+.ab-kpi span{display:block;font-family:var(--f-mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.ab-kpi b{font-family:var(--f-display);font-weight:800;font-stretch:80%;font-size:26px;line-height:1.15}
+.ab-kpi.ab-main{background:var(--green-soft);border-color:transparent}.ab-kpi.ab-main b{color:var(--green-ink);font-size:34px}
+.ab-note{font-size:14.5px;color:var(--muted);margin:8px 0}.ab-text{color:var(--ink-2);margin:6px 0}
+.ab-h{font-size:20px;font-weight:700;margin:34px 0 12px}
+.ab-sub{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:14px 0 8px}
+.ab-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.ab-table{width:100%;border-collapse:collapse;font-size:15px;min-width:520px}
+.ab-table th,.ab-table td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line)}
+.ab-table tr:last-child td{border-bottom:0}
+.ab-table th{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.ab-table a{color:var(--green-ink)}.ab-table small{color:var(--muted)}
+.ab-num{text-align:right!important;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ab-chips{display:flex;flex-wrap:wrap;gap:8px}
+.ab-chip{font-size:14px;background:var(--surface);border:1px solid var(--line);border-radius:30px;padding:5px 13px}
+.ab-chip b{color:var(--green-ink);margin-left:4px;font-family:var(--f-mono);font-size:12.5px}
+.ab-tip{background:#fff;color:#111;border:0;border-radius:6px;font-weight:700;font-size:11px;padding:2px 6px;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.ab-tip:before{display:none}.ab-tip-main{background:#0F6B4F;color:#fff}
+/* inversión */
+.band{background:var(--band);color:var(--band-ink);border-top:0}
+.band .eyebrow{color:var(--band-accent)}.band .shead p{color:var(--band-muted)}
+.money{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border:1px solid var(--band-line);border-radius:16px;overflow:hidden}
+.money div{padding:22px;border-right:1px solid var(--band-line)}.money div:last-child{border-right:0}
+.money span{display:block;font-family:var(--f-mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--band-muted)}
+.money b{font-family:var(--f-display);font-weight:800;font-stretch:80%;font-size:clamp(24px,3.2vw,38px);line-height:1.1}
+.money .hl b{color:var(--band-accent)}
+.break{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:22px;margin-top:30px}
+.break h3{font-size:18px;font-weight:700;margin-bottom:4px}.break p{margin:0;color:var(--band-muted);font-size:15px}
+.break .v{font-family:var(--f-mono);font-size:14px;color:var(--band-accent);margin-bottom:6px}
+.plan{margin-top:30px;border-top:1px solid var(--band-line);padding-top:24px;color:var(--band-muted);font-size:15.5px}
+.plan b{color:var(--band-ink)}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;counter-reset:s}
+.steps div{counter-increment:s}.steps div:before{content:'0' counter(s);font-family:var(--f-mono);font-weight:600;font-size:13px;color:var(--green)}
+.steps h3{font-size:18px;font-weight:700;margin:6px 0 4px}.steps p{margin:0;color:var(--ink-2);font-size:15.5px}
+.form{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:26px;box-shadow:var(--shadow)}
+.fld{margin-bottom:14px}.fld label{display:block;font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:5px}
+.fld input,.fld select,.fld textarea{width:100%;font:inherit;font-size:16px;padding:12px 13px;border-radius:10px;border:1px solid var(--line-strong);background:var(--paper);color:var(--ink)}
+.fld textarea{min-height:84px;resize:vertical}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chk{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;color:var(--ink-2);margin:4px 0 16px}
+.chk input{margin-top:4px;accent-color:var(--green)}
+.msg{margin-top:12px;font-size:14.5px;min-height:20px}.msg.ok{color:var(--green-ink)}.msg.err{color:#C0491B}
+footer{padding:34px 0 50px;border-top:1px solid var(--line);color:var(--muted);font-size:14px;display:flex;flex-wrap:wrap;gap:8px 22px;justify-content:space-between}
+footer a{color:var(--ink-2)}
+.disc{font-size:13px;color:var(--muted);margin-top:18px;max-width:80ch}
+.state{min-height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;padding:40px 22px}
+.state h1{font-weight:800;font-stretch:80%;font-size:32px}
+.spin{width:22px;height:22px;border:3px solid var(--line-strong);border-top-color:var(--green);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (max-width:860px){
+  .hero{grid-template-columns:1fr;gap:26px;padding:18px 0 44px}.two{grid-template-columns:1fr}
+  .nav a.link{display:none}.ab-kpis,.money{grid-template-columns:1fr}.money div{border-right:0;border-bottom:1px solid var(--band-line)}.money div:last-child{border-bottom:0}
+  section{padding:50px 0}.frow{grid-template-columns:1fr}.map{height:340px}.viewer{height:340px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div id="state" class="state"><div class="spin"></div><p>Cargando el proyecto…</p></div>
+<div id="page" class="hidden"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="../firebase-config.js"></script>
+<script type="module">
+import {getStore,esc,cop,normPhone,embedUrl,inversion,planPagos} from '../lx-store.js';
+import {renderEstudio,drawMap,stats} from '../lx-airbnb.js';
+
+const $=id=>document.getElementById(id);
+const id=new URLSearchParams(location.search).get('id')||'';
+const fail=(t,d)=>{$('state').innerHTML=`<h1>${t}</h1><p>${d}</p><a class="btn" href="../">Ir a LandX</a>`;};
+const ROAD={motorway:'Autopista',trunk:'Vía troncal',primary:'Vía principal',secondary:'Vía secundaria'};
+const CATS=['educacion','salud','comercio','cultura','recreacion','transporte'];
+const km=m=>m<1000?Math.round(m)+' m':(m/1000).toFixed(1).replace('.',',')+' km';
+
+let S,P,fotos=[];
+(async()=>{
+  if(!id)return fail('Proyecto no encontrado','El enlace no trae el identificador del proyecto.');
+  try{S=await getStore();P=await S.get('projects/'+id);}catch(e){console.warn(e);}
+  if(!P||P.published===false&&!(S.user()&&S.user().uid===P.uid))return fail('Este proyecto no está disponible','Puede que el enlace haya cambiado o que el proyecto ya no esté publicado.');
+  try{fotos=(await S.list(`projects/${id}/fotos`)).sort((a,b)=>(a.orden||0)-(b.orden||0));}catch(e){console.warn(e);}
+  render();
+})();
+
+function render(){
+  const v=inversion(P),lugar=[P.barrio,P.ciudad].filter(Boolean).join(' · '),ab=P.airbnb&&(P.airbnb.comps||[]).length?P.airbnb:null,st=ab?stats(ab.comps):null;
+  const en=P.entornoData,wa=normPhone(P.whatsapp),vids=(P.videos||[]).map(embedUrl).filter(Boolean);
+  document.title=`${P.titulo} · Inversión en rentas cortas${P.ciudad?' · '+P.ciudad:''}`;
+  const facts=[P.unidades?[P.unidades,'Unidades para alquilar']:null,v.total?[v.n,'Participaciones']:null,v.total?[cop(v.valor),'Por participación']:null,st&&st.nPrecio?[cop(st.mediana),'Mediana por noche en la zona']:null].filter(Boolean);
+  const pasos=planPagos(P,1);
+  let h=`<div class="wrap">
+  <nav class="nav"><a class="name" href="#top">${esc(P.titulo)}</a>
+    ${fotos.length>1||vids.length?'<a class="link" href="#galeria">Fotos</a>':''}<a class="link" href="#ubicacion">Ubicación</a>
+    ${ab?'<a class="link" href="#mercado">Mercado</a>':''}${v.total?'<a class="link" href="#inversion">Inversión</a>':''}
+    <a class="btn sm primary" href="#contacto">Quiero invertir</a></nav>
+  <header class="hero" id="top"><div>
+    <div class="eyebrow">Inversión colaborativa${lugar?' · '+esc(lugar):''}</div>
+    <h1>${esc(P.frase||P.titulo)}</h1>
+    <p class="lede">${esc(P.descripcion||'Un inmueble real, remodelado y dotado para rentas cortas, con varios inversionistas que comparten el activo y sus ingresos.')}</p>
+    <div class="cta"><a class="btn primary" href="#contacto">Quiero invertir</a><a class="btn" href="${v.total?'#inversion':'#ubicacion'}">Ver los números</a></div>
+    </div>${fotos[0]?`<div class="cover"><img src="${fotos[0].src}" alt="${esc(P.titulo)}"></div>`:''}</header>
+  ${facts.length?`<div class="facts" style="margin:0 0 60px">${facts.map(f=>`<div class="fact"><b>${esc(f[0])}</b><span>${f[1]}</span></div>`).join('')}</div>`:''}
+  </div>`;
+  if(fotos.length>1||vids.length)h+=`<section id="galeria"><div class="wrap"><div class="shead"><div class="eyebrow">El inmueble</div><h2>${fotos.length>1?'Así es hoy.':'Conoce el inmueble.'}</h2>
+    <p>${fotos.length>1?'Imágenes reales del inmueble en su estado actual.':'Recorrido en video del inmueble.'}</p></div>
+    <div class="gallery">${fotos.slice(1).map((f,i)=>`<button data-i="${i+1}" aria-label="Ampliar foto ${i+2}"><img loading="lazy" src="${f.src}" alt=""></button>`).join('')}</div>
+    ${vids.length?`<div class="videos">${vids.map(u=>`<iframe src="${esc(u)}" title="Video del proyecto" loading="lazy" allow="accelerometer; encrypted-media; picture-in-picture" allowfullscreen></iframe>`).join('')}</div>`:''}
+  </div></section>`;
+  h+=`<section id="ubicacion"><div class="wrap"><div class="shead"><div class="eyebrow">Ubicación</div><h2>${esc(lugar||'Dónde queda')}</h2>
+    ${en?'<p>Equipamientos y vías alrededor del predio, con distancias en línea recta.</p>':''}</div>
+    <div class="${en?'two':''}"><div class="map" id="mapLoc"></div>${en?`<div class="env">${envHtml(en)}</div>`:''}</div></div></section>`;
+  if(P.masa)h+=`<section id="masa"><div class="wrap"><div class="shead"><div class="eyebrow">El proyecto</div><h2>Volumen sobre el lote real.</h2>
+    <p>Masa del proyecto modelada sobre la geometría del lote en el catastro. Gira el modelo con el dedo o el mouse.</p></div>
+    <div class="two"><div class="viewer"><canvas id="cv"></canvas><div class="hud" id="cvHud"></div></div><table class="masa-table" id="masaT"></table></div></div></section>`;
+  if(ab)h+=`<section id="mercado"><div class="wrap"><div class="shead"><div class="eyebrow">Estudio de mercado · Airbnb</div><h2>¿A cuánto se alquila una noche en la zona?</h2>
+    <p>El punto verde es el proyecto. Los puntos rojos son alojamientos activos en Airbnb, con su precio por noche.</p></div>
+    <div class="map" id="mapAb"></div>${renderEstudio(ab.comps,ab.notas)}</div></section>`;
+  if(v.total)h+=`<section class="band" id="inversion"><div class="wrap"><div class="shead"><div class="eyebrow">La inversión</div><h2>Todo incluido: compra, obra y dotación.</h2>
+    <p>Varios inversionistas, un solo activo real. Los ingresos por rentas cortas se distribuyen según la participación de cada uno.</p></div>
+    <div class="money"><div><span>Inversión total</span><b>${cop(v.total)}</b></div><div class="hl"><span>Valor por participación</span><b>${cop(v.valor)}</b></div>
+      <div><span>Participaciones disponibles</span><b>${P.disponibles!=null?P.disponibles:v.n} de ${v.n}</b></div></div>
+    <div class="break">
+      ${v.compra?`<div><div class="v">${cop(v.compra)}</div><h3>Compra del inmueble</h3><p>Adquisición con estudio de títulos y certificado de tradición.</p></div>`:''}
+      ${v.obra?`<div><div class="v">${cop(v.obra)}</div><h3>Remodelación</h3><p>Adecuación del inmueble para operar como alojamiento de rentas cortas.</p></div>`:''}
+      ${v.dot?`<div><div class="v">${cop(v.dot)}</div><h3>Dotación y puesta en marcha</h3><p>Mobiliario, equipos y lanzamiento en plataformas.</p></div>`:''}
+    </div>
+    <div class="plan">${v.separacion?`Separas con <b>${cop(pasos[0].valor)}</b> por participación`:'Plan de pagos'}${(c=>c.length?`${v.separacion?' y pagas el saldo en':': pagas en'} <b>${c.length} cuota${c.length>1?'s':''} mensual${c.length>1?'es':''} de ${cop(c[0].valor)}</b>`:'')(pasos.filter(x=>x.n>0))}.${P.operacion?` Inicio de operación estimado: <b>${esc(P.operacion)}</b>.`:''}</div>
+    <div style="margin-top:26px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn primary" href="../portal/?id=${encodeURIComponent(id)}">Separar mi participación</a><a class="btn" href="#contacto" style="background:transparent;color:var(--band-ink);border-color:var(--band-line)">Obtener más información</a></div>
+    <p class="disc" style="color:var(--band-muted)">Las cifras son estimaciones del promotor del proyecto y no constituyen una oferta pública de valores ni garantizan rentabilidad. Toda inversión inmobiliaria tiene riesgo. Revisa los documentos legales antes de invertir.</p>
+  </div></section>`;
+  h+=`<section><div class="wrap"><div class="shead"><div class="eyebrow">Cómo funciona</div><h2>De interesado a copropietario.</h2></div>
+    <div class="steps"><div><h3>Infórmate</h3><p>Déjanos tus datos y recibe el detalle financiero, el plan de obra y la estructura legal.</p></div>
+    <div><h3>Crea tu cuenta</h3><p>Regístrate en el portal del inversionista y separa tu participación.</p></div>
+    <div><h3>Sigue tu plan</h3><p>Consulta tu plan de pagos y el estado de cada cuota cuando quieras.</p></div>
+    <div><h3>Recibe</h3><p>El inmueble opera y recibes tu parte de los ingresos según tu participación.</p></div></div></div></section>
+  <section id="contacto"><div class="wrap"><div class="two">
+    <div class="shead" style="margin:0"><div class="eyebrow">Obtener más información</div><h2>Recibe el detalle del proyecto.</h2>
+      <p>Cuéntanos quién eres y te enviamos las cifras, el plan de remodelación y la estructura de la inversión. Sin compromiso.</p>
+      ${wa?`<p style="margin-top:18px"><a class="btn" href="https://wa.me/${wa}?text=${encodeURIComponent('Hola, quiero información sobre '+P.titulo)}" target="_blank" rel="noopener">Escribir por WhatsApp</a></p>`:''}</div>
+    <form class="form" id="lead" novalidate>
+      <div class="frow"><div class="fld"><label for="fN">Nombre</label><input id="fN" autocomplete="name" maxlength="80" required></div>
+        <div class="fld"><label for="fC">Celular</label><input id="fC" inputmode="tel" autocomplete="tel" maxlength="20" required></div></div>
+      <div class="fld"><label for="fE">Correo</label><input id="fE" type="email" autocomplete="email" maxlength="120" required></div>
+      <div class="fld"><label for="fM">Monto que te interesa invertir</label><select id="fM"><option>Aún no lo sé</option><option>Una participación</option><option>Dos o más participaciones</option></select></div>
+      <div class="fld"><label for="fT">Mensaje (opcional)</label><textarea id="fT" maxlength="600"></textarea></div>
+      <label class="chk"><input type="checkbox" id="fOk"><span>Autorizo el tratamiento de mis datos personales para ser contactado sobre este proyecto (Ley 1581 de 2012).</span></label>
+      <button class="btn primary" style="width:100%" id="fSend">Quiero más información</button><div class="msg" id="fMsg" role="status"></div>
+    </form></div></div></section>
+  <div class="wrap"><footer><span><b>${esc(P.titulo)}</b>${lugar?' · '+esc(lugar):''}${P.contacto?' · '+esc(P.contacto):''}</span>
+    <span><a href="../portal/?id=${encodeURIComponent(id)}">Portal del inversionista</a> · Página creada con <a href="../">LandX</a></span></footer></div>`;
+  $('page').innerHTML=h;$('state').classList.add('hidden');$('page').classList.remove('hidden');
+
+  // mapas
+  const m=L.map('mapLoc',{scrollWheelZoom:false}).setView([P.coords.lat,P.coords.lon],16);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
+  L.circleMarker([P.coords.lat,P.coords.lon],{radius:11,color:'#fff',weight:3,fillColor:'#0F6B4F',fillOpacity:1}).addTo(m).bindTooltip(P.titulo,{permanent:true,direction:'top',className:'ab-tip ab-tip-main',offset:[0,-8]});
+  if(ab)drawMap($('mapAb'),P.coords,ab.comps,P.titulo);
+  if(P.masa)masa3d().catch(e=>{console.warn(e);$('masa').classList.add('hidden');});
+  // galería
+  document.querySelectorAll('.gallery button').forEach(b=>b.onclick=()=>{const d=document.createElement('div');d.className='lightbox';
+    d.innerHTML=`<img src="${fotos[+b.dataset.i].src}" alt="">`;d.onclick=()=>d.remove();document.body.appendChild(d);});
+  $('lead').onsubmit=sendLead;
+}
+function envHtml(en){
+  let h='';
+  if((en.roads||[]).length)h+='<h4>Vías principales</h4>'+en.roads.map(r=>`<div class="it"><span>${esc(r.name)} <small style="color:var(--muted)">${ROAD[r.type]||''}</small></span><span>${km(r.dist)}</span></div>`).join('');
+  CATS.forEach(k=>{const l=(en.items||[]).filter(i=>i.key===k).slice(0,4);if(!l.length)return;
+    h+=`<h4>${esc(l[0].icon)} ${esc(l[0].cat)}</h4>`+l.map(i=>`<div class="it"><span>${esc(i.name)}</span><span>${km(i.dist)}</span></div>`).join('');});
+  return h+'<p class="ab-note">Datos de OpenStreetMap.</p>';
+}
+async function sendLead(ev){
+  ev.preventDefault();const msg=$('fMsg'),b=$('fSend');msg.className='msg';
+  const d={nombre:$('fN').value.trim(),celular:$('fC').value.trim(),correo:$('fE').value.trim().toLowerCase(),monto:$('fM').value,mensaje:$('fT').value.trim()};
+  if(!d.nombre||!d.celular||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.correo)){msg.textContent='Escribe tu nombre, celular y un correo válido.';msg.classList.add('err');return;}
+  if(!$('fOk').checked){msg.textContent='Necesitamos tu autorización para contactarte.';msg.classList.add('err');return;}
+  b.disabled=true;
+  try{await S.add(`projects/${id}/leads`,{...d,etapa:'nuevo',notas:'',origen:'Página del proyecto',creado:S.now()});
+    $('lead').reset();msg.textContent='¡Listo! Recibimos tus datos y te contactaremos pronto.';msg.classList.add('ok');}
+  catch(e){console.error(e);msg.textContent='No pudimos enviar tus datos. Intenta de nuevo o escríbenos por WhatsApp.';msg.classList.add('err');}
+  finally{b.disabled=false;}
+}
+async function masa3d(){
+  const THREE=await import('three'),{OrbitControls}=await import('three/addons/controls/OrbitControls.js'),{footprintOf,offsetPolygon,shoelace}=await import('../app/cali.js');
+  const pts=footprintOf(JSON.parse(P.masa.geom)).pts;if(pts.length<3)throw new Error('sin geometría');
+  const cv=$('cv'),r=new THREE.WebGLRenderer({canvas:cv,antialias:true});r.setPixelRatio(Math.min(devicePixelRatio,2));r.setClearColor(0x05080d,1);
+  const sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(45,1,.5,20000),ct=new OrbitControls(cam,cv);
+  ct.enableDamping=true;ct.maxPolarAngle=Math.PI*.495;ct.enableZoom=false;ct.autoRotate=!matchMedia('(prefers-reduced-motion:reduce)').matches;ct.autoRotateSpeed=.8;
+  sc.add(new THREE.AmbientLight(0x4a5878,.85));const sun=new THREE.DirectionalLight(0xffd9a0,1.15);sun.position.set(120,220,90);sc.add(sun);
+  sc.add(new THREE.GridHelper(600,60,0x1a2230,0x11161e));
+  const shape=p=>{const s=new THREE.Shape();s.moveTo(p[0].x,-p[0].z);for(let i=1;i<p.length;i++)s.lineTo(p[i].x,-p[i].z);return s;};
+  const g=new THREE.ShapeGeometry(shape(pts));g.rotateX(-Math.PI/2);const lot=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:0x3a6ea5,transparent:true,opacity:.4,side:THREE.DoubleSide}));lot.position.y=.05;sc.add(lot);
+  const cols=[0x56c497,0x4dd0e1,0xf4b942,0xa06bff];let top=0,built=0,pisos=0;
+  P.masa.masas.forEach((m,i)=>{const pp=offsetPolygon(pts,+m.offset||0),h=m.floors*m.floorH,ge=new THREE.ExtrudeGeometry(shape(pp),{depth:h,bevelEnabled:false});
+    ge.rotateX(-Math.PI/2);ge.translate(0,+m.baseZ||0,0);
+    sc.add(new THREE.Mesh(ge,new THREE.MeshStandardMaterial({color:cols[i%4],transparent:true,opacity:.72,roughness:.5})));
+    sc.add(new THREE.LineSegments(new THREE.EdgesGeometry(ge),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.55})));
+    top=Math.max(top,(+m.baseZ||0)+h);built+=shoelace(pp)*m.floors;pisos+=m.floors;});
+  const s=Math.max(50,Math.sqrt(P.masa.area||400)*2.2,top*1.6);cam.position.set(s,s*.8,s);ct.target.set(0,top/3,0);
+  const f=n=>Math.round(n).toLocaleString('es-CO');
+  $('masaT').innerHTML=`<tr><td>Área del lote</td><td>${f(P.masa.area)} m²</td></tr><tr><td>Pisos</td><td>${pisos}</td></tr><tr><td>Altura</td><td>${top.toFixed(1).replace('.',',')} m</td></tr>
+    <tr><td>Área construida</td><td>${f(built)} m²</td></tr><tr><td>Índice de construcción</td><td>${(P.masa.area?built/P.masa.area:0).toFixed(2).replace('.',',')}</td></tr>`;
+  $('cvHud').textContent=P.masa.npn?'NPN '+P.masa.npn:'';
+  (function loop(){requestAnimationFrame(loop);const w=cv.clientWidth,h=cv.clientHeight;if(w&&h&&(cv.width!==Math.floor(w*r.getPixelRatio())||cv.height!==Math.floor(h*r.getPixelRatio()))){r.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();}ct.update();r.render(sc,cam);})();
+}
+</script>
+</body>
+</html>

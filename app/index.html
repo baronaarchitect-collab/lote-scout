@@ -155,7 +155,7 @@
           <button class="btn sm" id="rFinca">Finca Raíz</button>
           <button class="btn sm" id="rMetro">Metro Cuadrado</button>
         </div>
-        <div class="hint">Abren el portal filtrado por la ubicación del lote para comparar precios/rentas. No es una API en vivo (esos servicios son cerrados/de pago).</div>
+        <div class="hint"><b>Airbnb</b> muestra el mapa con tu predio y los alojamientos alrededor, con el estudio de mercado. Los demás abren el portal filtrado por la ubicación del lote.</div>
       </div>
       <div class="field"><label>Teléfono de la valla</label>
         <div class="row" style="gap:8px">
@@ -233,7 +233,9 @@
           🗺️ Ver cada punto en el mapa junto a tu foto<br>
           💰 Comparar precios/rentas por ubicación (Airbnb · Booking · Finca Raíz · Metro Cuadrado)<br>
           📄 Descargar y enviar el informe editable (.doc)<br>
-          🏙️ Masa normativa 3D sobre el lote del catastro (Cali · POT 2014) con lámina imprimible
+          🏙️ Masa normativa 3D sobre el lote del catastro (Cali · POT 2014) con lámina imprimible<br>
+          🏘️ Mapa y estudio de mercado de Airbnb alrededor del predio<br>
+          🏠 Página de inversión del proyecto con CRM y portal del inversionista
         </div>
       </div>
       <div style="font-weight:700;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Gratis para siempre</div>
@@ -353,7 +355,7 @@ async function FirebaseBackend(){
 }
 
 /* ===================== Estado & UI ===================== */
-let map,markers,analysisLayer,focusLayer,me=null,profile={},lots=[],current=null,authMode='login',caliMod=null;
+let map,markers,analysisLayer,focusLayer,me=null,profile={},lots=[],current=null,authMode='login',caliMod=null,invMod=null;
 
 function initMap(){
   map=L.map('map',{zoomControl:true}).setView(CITIES[DEFAULT_CITY].c,CITIES[DEFAULT_CITY].z);
@@ -424,7 +426,8 @@ function openDetail(id){
   $('dLat').value=current.coords?current.coords.lat:'';
   $('dLon').value=current.coords?current.coords.lon:'';
   renderCallRow();updatePhoneHint();
-  if(caliMod)caliMod.onDetail(current);   // sección Catastro de Cali (solo si la foto cae en Cali)
+  if(caliMod)caliMod.onDetail(current);
+  if(invMod)invMod.onDetail(current);   // sección Catastro de Cali (solo si la foto cae en Cali)
   $('detailModal').classList.remove('hidden');
   if(current.coords&&current.coords.lat!=null)map.setView([current.coords.lat,current.coords.lon],17);
 }
@@ -599,7 +602,7 @@ async function analyzeZone(){
       const key=nm+'|'+(w.tags&&w.tags.highway);
       if(!roadMap[key]||ng.dist<roadMap[key].dist)roadMap[key]={name:nm,type:w.tags&&w.tags.highway,dist:ng.dist,lat:ng.lat,lon:ng.lon};});
     const roadItems=Object.values(roadMap).sort((a,b)=>a.dist-b.dist);
-    lastAnalysis={items,roads:roadItems,lat,lon};
+    lastAnalysis={items,roads:roadItems,lat,lon,lotId:current.id};
     renderAnalysis(warn,items,roadItems);
     plotAnalysis(items);
   }catch(e){console.error(e);openAnalysis(warn+'<div style="padding:20px;color:var(--warn)">No se pudo consultar OpenStreetMap ahora (servidor ocupado). Intenta de nuevo en un momento.</div>');}
@@ -787,12 +790,15 @@ async function emailReport(){
   // Módulo Cali (catastro + plano CAD + masa normativa). Recibe un puente con lo que necesita de la app.
   const bridge={
     get current(){return current;}, isPro, showUpgrade, toast,
-    email:()=>(me&&me.email)||'', reportEndpoint,
+    email:()=>(me&&me.email)||'', reportEndpoint, compressImage,
+    city:()=>profile.city||DEFAULT_CITY, lastAnalysis:()=>lastAnalysis,
     // Guarda campos en el lote abierto y refresca la lista/mapa sin cerrar el detalle
     async patchCurrent(fields){ if(!current)return; Object.assign(current,fields); await Backend.updateLot(current.id,fields);
       lots=await Backend.listLots(); renderList(); renderMap(); }
   };
   import('./cali.js').then(m=>{caliMod=m;m.init(bridge);}).catch(e=>console.warn('Módulo Cali no disponible:',e));
+  // Módulo Inversión (mapa Airbnb, página pública del proyecto y CRM)
+  import('./invest.js').then(async m=>{await m.init(bridge);invMod=m;}).catch(e=>console.warn('Módulo Inversión no disponible:',e));
   // sesión
   Backend.onAuth(u=>{ me=u; if(u) enterApp(); else showAuth(); });
 })();

@@ -1,21 +1,110 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      // email_verified: evita que alguien registre con contraseña un correo de admin ajeno.
+      // Los administradores deben entrar con Google.
+      return signedIn() && request.auth.token.email_verified == true && request.auth.token.email in
+        ['barona.architect@gmail.com', 'baronajuandavid@gmail.com', 'proyectos@lifecity.com.co'];
+    }
+    function isPro() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('plan', 'free') == 'pro';
+    }
+    function ownsProject(pid) {
+      return signedIn()
+        && get(/databases/$(database)/documents/projects/$(pid)).data.uid == request.auth.uid;
+    }
+    function isPublished(pid) {
+      return get(/databases/$(database)/documents/projects/$(pid)).data.get('published', false) == true;
+    }
+
+    // ---------------- Usuarios y sus lotes ----------------
     match /users/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
+      allow read: if signedIn() && request.auth.uid == uid;
 
       // Crear su perfil: no puede autoasignarse un plan pago.
-      allow create: if request.auth != null && request.auth.uid == uid
+      allow create: if signedIn() && request.auth.uid == uid
                     && request.resource.data.get('plan', 'free') == 'free';
 
       // Actualizar: puede cambiar ciudad, correo, etc., pero NO su plan.
       // Usamos .get(campo, valor_por_defecto) porque leer un campo inexistente
       // hace fallar la regla y bloquearia escrituras legitimas.
-      allow update: if request.auth != null && request.auth.uid == uid
+      allow update: if signedIn() && request.auth.uid == uid
                     && request.resource.data.get('plan', 'free') == resource.data.get('plan', 'free');
 
       match /lots/{lotId} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
+        allow read, write: if signedIn() && request.auth.uid == uid;
+      }
+    }
+
+    // ---------------- Sondeos Airbnb por encargo ----------------
+    // Documento airbnb/{uid}_{lotId}. El usuario Pro lo solicita; solo un
+    // administrador carga los comparables y lo marca como listo.
+    match /airbnb/{reqId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isPro()
+                    && request.resource.data.uid == request.auth.uid
+                    && reqId.matches(request.auth.uid + '_.*')
+                    && request.resource.data.status == 'solicitado';
+      // El usuario solo puede volver a pedirlo (estado 'solicitado'), sin tocar los datos.
+      allow update: if isAdmin()
+                    || (isPro() && resource.data.uid == request.auth.uid
+                        && request.resource.data.uid == request.auth.uid
+                        && request.resource.data.status == 'solicitado'
+                        && request.resource.data.comps == resource.data.comps
+                        && request.resource.data.notas == resource.data.notas);
+      allow delete: if isAdmin();
+    }
+
+    // ---------------- Proyectos de inversión (página pública) ----------------
+    match /projects/{pid} {
+      // Público si está publicado; el dueño siempre lo ve.
+      allow read: if resource.data.get('published', false) == true
+                  || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isPro() && request.resource.data.uid == request.auth.uid;
+      allow update: if signedIn() && resource.data.uid == request.auth.uid
+                    && request.resource.data.uid == request.auth.uid;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+
+      match /fotos/{fid} {
+        allow read: if isPublished(pid) || ownsProject(pid);
+        allow write: if ownsProject(pid);
+      }
+
+      // Interesados: cualquiera puede enviar el formulario; solo el dueño los lee.
+      match /leads/{lid} {
+        allow create: if isPublished(pid)
+                      && request.resource.data.keys().hasOnly(
+                           ['nombre', 'celular', 'correo', 'monto', 'mensaje', 'etapa', 'notas', 'origen', 'creado'])
+                      && request.resource.data.etapa == 'nuevo'
+                      && request.resource.data.nombre is string && request.resource.data.nombre.size() <= 80
+                      && request.resource.data.celular is string && request.resource.data.celular.size() <= 20
+                      && request.resource.data.correo is string && request.resource.data.correo.size() <= 120
+                      && request.resource.data.get('mensaje', '').size() <= 600
+                      && request.resource.data.get('notas', '') == '';
+        allow create: if ownsProject(pid);
+        allow read, update, delete: if ownsProject(pid);
+      }
+
+      // Inversionistas: documento con el uid del inversionista.
+      match /investors/{iid} {
+        allow read: if ownsProject(pid) || (signedIn() && request.auth.uid == iid);
+        // El inversionista crea su plan, siempre sin pagos confirmados.
+        allow create: if signedIn() && request.auth.uid == iid && isPublished(pid)
+                      && request.resource.data.uid == iid
+                      && request.resource.data.pagados.size() == 0
+                      && request.resource.data.participaciones is int
+                      && request.resource.data.participaciones >= 1;
+        // El inversionista solo puede avisar pagos o corregir sus datos de contacto.
+        // Confirmar un pago (campo 'pagados') es exclusivo del dueño del proyecto.
+        allow update: if ownsProject(pid)
+                      || (signedIn() && request.auth.uid == iid
+                          && request.resource.data.diff(resource.data).affectedKeys()
+                               .hasOnly(['reportes', 'nombre', 'celular']));
+        allow delete: if ownsProject(pid);
       }
     }
   }
