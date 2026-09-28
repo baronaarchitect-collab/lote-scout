@@ -185,7 +185,7 @@ async function openProject(lot){
   const tieneAb=!!(req&&req.status==='listo'&&(req.comps||[]).length),tieneAn=!!(an&&an.lotId===lot.id),tieneMasa=!!(lot.predio&&(lot.masas||[]).length);
   $('pjIncl').innerHTML=`${ok(tieneAb)} Estudio de mercado Airbnb ${tieneAb?'':'<i>— pídelo con el botón Airbnb del lote</i>'}<br>
     ${ok(tieneAn||(p.entorno||[]).length)} Entorno a 5 km ${tieneAn||(p.entorno||[]).length?'':'<i>— ejecuta «Analizar zona» antes de publicar</i>'}<br>
-    ${ok(tieneMasa)} Masa 3D del proyecto ${tieneMasa?'':'<i>— solo Cali: crea y guarda la masa normativa</i>'}`;
+    ${ok(tieneMasa)} Masa 3D del proyecto ${tieneMasa?'':'<i>— busca el lote en el catastro y guarda su masa normativa</i>'}`;
   editing._req=tieneAb?req:null;
 }
 async function saveProject(){

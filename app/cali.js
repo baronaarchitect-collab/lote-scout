@@ -1,27 +1,26 @@
 /* =========================================================================
-   LandX · Módulo Cali
+   LandX · Módulo Catastro (Cali, Bogotá, Barranquilla y Medellín)
    -------------------------------------------------------------------------
-   Cuando la foto cae dentro de Cali, este módulo agrega al detalle del lote:
-     1. Búsqueda del lote en el catastro (IDESC / GeoServer, capa cat_bas_terrenos).
+   Cuando la foto cae dentro de una ciudad con catastro abierto, este módulo
+   agrega al detalle del lote:
+     1. Búsqueda del lote en el catastro de esa ciudad.
      2. Plano CAD (.dxf) de la zona con el lote resaltado y medidas reales.
-     3. Masa normativa 3D sobre la geometría real del lote (POT 2014) — función Pro.
-   Se carga desde app/index.html con import('./cali.js') y recibe un "puente"
-   (LX) con lo que necesita de la app: lote actual, plan, toast, guardar.
+     3. Masa normativa 3D sobre la geometría real del lote — función Pro.
+   Las fuentes de cada ciudad viven en cities.js; aquí no hay nada específico
+   de una ciudad. Se carga desde app/index.html con import('./cali.js') y
+   recibe un "puente" (LX) con lo que necesita de la app.
    ========================================================================= */
-const OWS='https://ws-idesc.cali.gov.co/geoserver/catastro/ows';
-const WMS='https://ws-idesc.cali.gov.co/geoserver/catastro/wms';
-const POT_OWS='https://ws-idesc.cali.gov.co/geoserver/ows';
-const LAYER='catastro:cat_bas_terrenos';
-// Municipio de Cali (aprox.). Suficiente para decidir si vale la pena consultar el catastro.
-const BBOX={latMin:3.25,latMax:3.62,lonMin:-76.72,lonMax:-76.36};
-const RADIUS=0.0016; // ~175 m alrededor de la foto para traer lotes vecinos
+import {cityAt,cityById} from './cities.js';
 
-let LX=null;
+let LX=null,CITY=null;
 const $=id=>document.getElementById(id);
 const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt=n=>Math.round(n).toLocaleString('es-CO');
 
-export function inCali(c){return !!c&&c.lat!=null&&+c.lat>=BBOX.latMin&&+c.lat<=BBOX.latMax&&+c.lon>=BBOX.lonMin&&+c.lon<=BBOX.lonMax;}
+export const inCali=c=>!!cityAt(c);   // nombre histórico: hoy significa "en una ciudad con catastro"
+// Ciudad de un lote: la del predio guardado (los guardados antes de tener varias ciudades son de Cali)
+// o, si aún no tiene predio, la que contiene sus coordenadas
+const cityOf=lot=>!lot?null:lot.predio?cityById(lot.predio.ciudad||'cali'):cityAt(lot.coords);
 
 /* ===================== Geometría (compartida por DXF y 3D) ===================== */
 // Proyección local equirectangular en metros alrededor de un origen (misma en plano y 3D)
@@ -60,20 +59,14 @@ export function offsetPolygon(pts,dist){
 
 /* ===================== Catastro (WFS) ===================== */
 let lastFeats=[],lastKey='';
-async function fetchLots(lat,lon){
-  const key=lat.toFixed(4)+','+lon.toFixed(4);
+async function fetchLots(lat,lon,city){
+  const key=city.id+':'+lat.toFixed(4)+','+lon.toFixed(4);
   if(lastKey===key&&lastFeats.length)return lastFeats;
-  const bbox=[lon-RADIUS,lat-RADIUS,lon+RADIUS,lat+RADIUS].join(',')+',EPSG:4326';
-  // propertyName es obligatorio: la vista de la Alcaldía perdió la columna shape_leng y sin esta
-  // lista el servidor responde 400 ("column shape_leng does not exist").
-  const props='npn,numepred,direpred,nom_barrio,comuna,manzana,terreno,destinacio,shape_area,the_geom';
-  const url=`${OWS}?service=WFS&version=2.0.0&request=GetFeature&typeNames=${encodeURIComponent(LAYER)}&outputFormat=application/json&srsName=EPSG:4326&count=900&propertyName=${props}&bbox=${encodeURIComponent(bbox)}`;
-  const r=await fetch(url);if(!r.ok)throw new Error('HTTP '+r.status);
-  const gj=await r.json();lastFeats=gj.features||[];lastKey=key;return lastFeats;
+  lastFeats=await city.lots(lat,lon);lastKey=key;return lastFeats;
 }
 function predioFrom(f){
   const p=f.properties||{};const fp=footprintOf(f.geometry);
-  return {npn:p.npn||'',direccion:p.direpred||'',barrio:p.nom_barrio||'',comuna:p.comuna?String(p.comuna):'',
+  return {ciudad:CITY.id,npn:p.npn||'',direccion:p.direpred||'',barrio:p.nom_barrio||'',comuna:p.comuna?String(p.comuna):'',
     manzana:p.manzana||'',terreno:p.terreno||'',destinacion:p.destinacio||'',
     area:Math.round(p.shape_area?+p.shape_area:shoelace(fp.pts)),
     // Firestore no acepta arreglos anidados: la geometría GeoJSON va como texto.
@@ -114,7 +107,7 @@ const CSS=`
 `;
 const SECTION=`
 <div class="cali-box hidden" id="caliBox">
-  <div class="t">🏛️ Catastro de Cali <span class="hint" style="margin:0">· IDESC + POT 2014</span></div>
+  <div class="t">🏛️ Catastro de <span id="caliCity"></span> <span class="hint" style="margin:0" id="caliSrc"></span></div>
   <div id="caliInfo"></div>
   <div class="acts" id="caliActs"></div>
 </div>`;
@@ -130,11 +123,14 @@ const CAT_MODAL=`
 </div></div>`;
 const MZ_MODAL=`
 <div id="mzModal" class="modal hidden"><div class="sheet" style="max-width:720px">
-  <div class="hd"><h2>🏙️ Masa normativa · POT Cali</h2><button class="iconbtn" id="mzClose">✕</button></div>
+  <div class="hd"><h2>🏙️ Masa normativa · <span id="mzCity"></span></h2><button class="iconbtn" id="mzClose">✕</button></div>
   <div class="bd">
     <div class="mz-view"><canvas id="mzCanvas"></canvas>
-      <div class="mz-hud"><div>NPN<b id="mzNpn">—</b></div><div>LOTE<b id="mzArea">—</b></div></div></div>
-    <div class="mz-pot" id="mzPot"><span class="spin"></span> Consultando edificabilidad POT…</div>
+      <div class="mz-hud"><div><span id="mzCodLbl">NPN</span><b id="mzNpn">—</b></div><div>LOTE<b id="mzArea">—</b></div></div></div>
+    <div class="mz-pot" id="mzPot"></div>
+    <div class="row" style="margin-bottom:6px"><div class="field" style="margin:0"><label for="mzIc">Índice de construcción máx.</label><input id="mzIc" inputmode="decimal" placeholder="Ej: 2,4"></div>
+      <div class="field" style="margin:0"><label for="mzPisosMax">Pisos máximos</label><input id="mzPisosMax" inputmode="numeric" placeholder="Ej: 8"></div></div>
+    <div class="hint" style="margin:0 0 12px">Se llenan solos con la norma de la ciudad. Cámbialos si tu ficha normativa dice otra cosa.</div>
     <div class="mz-meter"><div class="lbls"><span>Área construida</span><span id="mzMtrTxt">0 / — m²</span></div>
       <div class="bar"><span id="mzMtrBar"></span></div><div class="hint" id="mzMtrNote"></div></div>
     <div class="mz-ctl"><label>Pisos <span id="mzvFloors">5</span></label><input type="range" id="mzFloors" min="1" max="40" value="5"></div>
@@ -166,17 +162,19 @@ export function init(bridge){
 
 export function onDetail(lot){
   const box=$('caliBox');
-  if(!lot||!inCali(lot.coords)){box.classList.add('hidden');return;}
+  const city=cityOf(lot);
+  if(!lot||!city){box.classList.add('hidden');return;}
+  $('caliCity').textContent=city.name;$('caliSrc').textContent='· '+city.norma;
   box.classList.remove('hidden');
   const p=lot.predio;
   if(!p){
-    $('caliInfo').innerHTML='<div class="hint" style="margin:0 0 10px">Esta foto está en Cali. Busca el lote en el catastro para obtener su NPN, el plano CAD con medidas reales y la masa normativa.</div>';
+    $('caliInfo').innerHTML='<div class="hint" style="margin:0 0 10px">Esta foto está en '+city.name+'. Busca el lote en el catastro para obtener su '+city.codigo.toLowerCase()+', el plano CAD con medidas reales y la masa normativa.</div>';
     $('caliActs').innerHTML='<button class="btn" id="caliFind">🗺️ Buscar el lote en el catastro</button>';
   }else{
     $('caliInfo').innerHTML=`<div class="kv">
-      <span class="k">NPN</span><span class="npn">${esc(p.npn)||'—'}</span>
-      <span class="k">Dirección</span><span>${esc(p.direccion)||'—'}</span>
-      <span class="k">Barrio</span><span>${esc(p.barrio)||'—'}${p.comuna?' · Comuna '+esc(p.comuna):''}</span>
+      <span class="k">${city.codigo}</span><span class="npn">${esc(p.npn)||'—'}</span>
+      ${p.direccion?`<span class="k">Dirección</span><span>${esc(p.direccion)}</span>`:''}
+      ${p.barrio?`<span class="k">Barrio</span><span>${esc(p.barrio)}${p.comuna?' · Comuna '+esc(p.comuna):''}</span>`:`<span class="k">Manzana</span><span>${esc(p.manzana)||'—'}</span>`}
       <span class="k">Área</span><span>${fmt(p.area||0)} m² · ${lot.masas&&lot.masas.length?lot.masas.length+' masa(s) guardada(s)':'sin masa'}</span></div>`;
     $('caliActs').innerHTML=`<button class="btn" id="caliDxf">📐 Descargar plano CAD</button>
       <button class="btn primary" id="caliMasas">🏙️ Crear masa normativa${LX.isPro()?'':'<span class="cali-pro">PRO</span>'}</button>
@@ -188,30 +186,34 @@ export function onDetail(lot){
 }
 
 /* ===================== Modal catastro ===================== */
-let cmap,cWfs,cMarker,cSelLayer,pending=null;
+let cmap,cWfs,cWms=null,cMarker,cSelLayer,pending=null;
 async function openCatastro(lot){
+  CITY=cityAt(lot.coords)||cityOf(lot);
+  if(!CITY){LX.toast('Esta ubicación no está en una ciudad con catastro disponible');return;}
   pending=null;$('caliSel').classList.add('hidden');$('caliUse').disabled=true;
   $('caliModal').classList.remove('hidden');
   const {lat,lon}=lot.coords;
   if(!cmap){
     cmap=L.map('caliMap',{zoomControl:true}).setView([lat,lon],18);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap'}).addTo(cmap);
-    L.tileLayer.wms(WMS,{layers:LAYER,format:'image/png',transparent:true,version:'1.1.0',opacity:.5}).addTo(cmap);
     cMarker=L.layerGroup().addTo(cmap);cWfs=L.layerGroup().addTo(cmap);cSelLayer=L.layerGroup().addTo(cmap);
   }
   cMarker.clearLayers();cWfs.clearLayers();cSelLayer.clearLayers();
+  // Capa de contexto (imagen de todos los lotes): solo las ciudades que la publican
+  if(cWms){cmap.removeLayer(cWms);cWms=null;}
+  if(CITY.wms)cWms=L.tileLayer.wms(CITY.wms.url,{layers:CITY.wms.layers,format:'image/png',transparent:true,version:'1.1.0',opacity:.5}).addTo(cmap);
   L.marker([lat,lon]).addTo(cMarker).bindTooltip('📷 Tu foto',{permanent:true,direction:'top'});
   cmap.setView([lat,lon],18);setTimeout(()=>cmap.invalidateSize(),150);
   $('caliHint').innerHTML='<span class="spin"></span> Buscando lotes del catastro…';
   try{
-    const feats=await fetchLots(lat,lon);
+    const feats=await fetchLots(lat,lon,CITY);
     L.geoJSON({type:'FeatureCollection',features:feats},{style:{color:'#3aa0ff',weight:1,fillColor:'#3aa0ff',fillOpacity:.07},
       onEachFeature:(f,layer)=>{layer.on('click',()=>pick(f));}}).addTo(cWfs);
     $('caliHint').textContent=`${feats.length} lotes en la zona. Toca el que corresponde a la foto.`;
     // Preselecciona el lote que contiene la foto, si existe
     const hit=feats.find(f=>pointInGeom(lon,lat,f.geometry));if(hit)pick(hit);
     if(lot.predio&&!hit){const same=feats.find(f=>(f.properties||{}).npn===lot.predio.npn);if(same)pick(same);}
-  }catch(e){console.warn(e);$('caliHint').innerHTML='⚠️ No se pudieron cargar los lotes (servidor de la Alcaldía ocupado). <a href="#" id="caliRetry">Reintentar</a>';
+  }catch(e){console.warn(e);$('caliHint').innerHTML='⚠️ No se pudieron cargar los lotes de '+CITY.name+' (servidor de la Alcaldía ocupado). <a href="#" id="caliRetry">Reintentar</a>';
     $('caliRetry').onclick=ev=>{ev.preventDefault();lastKey='';openCatastro(lot);};}
 }
 function pointInGeom(x,y,geom){
@@ -222,7 +224,8 @@ function pick(f){
   pending=f;const p=predioFrom(f);
   cSelLayer.clearLayers();L.geoJSON({type:'Feature',geometry:f.geometry},{style:{color:'#2f9e6e',weight:3,fillColor:'#2f9e6e',fillOpacity:.35}}).addTo(cSelLayer);
   $('caliSel').classList.remove('hidden');
-  $('caliSel').innerHTML=`<b>NPN ${esc(p.npn)||'—'}</b><br>${esc(p.direccion)||'Sin dirección'}<br><span class="hint" style="margin:0">${esc(p.barrio)||'—'}${p.comuna?' · Comuna '+esc(p.comuna):''} · ${fmt(p.area)} m² · ${esc(p.destinacion)||''}</span>`;
+  const det=[p.barrio?p.barrio+(p.comuna?' · Comuna '+p.comuna:''):(p.manzana?'Manzana '+p.manzana:''),fmt(p.area)+' m²',p.destinacion].filter(Boolean).map(esc).join(' · ');
+  $('caliSel').innerHTML=`<b>${esc(CITY.codigo)} ${esc(p.npn)||'—'}</b><br>${p.direccion?esc(p.direccion)+'<br>':''}<span class="hint" style="margin:0">${det}</span>`;
   $('caliUse').disabled=false;
 }
 async function usePending(){
@@ -253,7 +256,7 @@ export function buildDXF(lot,feats){
   for(let i=0;i<ring.length;i++){const a=ring[i],b=ring[(i+1)%ring.length];area+=a[0]*b[1]-b[0]*a[1];const len=Math.hypot(b[0]-a[0],b[1]-a[1]);perim+=len;
     if(len>=1.2)ents+=txt((a[0]+b[0])/2,(a[1]+b[1])/2,1.5,len.toFixed(2)+' m','COTAS');}
   area=Math.abs(area)/2;
-  ents+=txt(0,0,4,'LOTE SELECCIONADO','LOTE_SELECCIONADO')+txt(0,-6,2.4,'NPN '+(sel.npn||'s/d'),'LOTE_SELECCIONADO');
+  ents+=txt(0,0,4,'LOTE SELECCIONADO','LOTE_SELECCIONADO')+txt(0,-6,2.4,cityOf(lot).codigo+' '+(sel.npn||'s/d'),'LOTE_SELECCIONADO');
   if(sel.direccion)ents+=txt(0,-11,2.4,sel.direccion,'LOTE_SELECCIONADO');
   ents+=txt(0,-16,2.2,'Area '+area.toFixed(1)+' m2  Perim '+perim.toFixed(1)+' m','LOTE_SELECCIONADO');
   if(lot.coords){const [x,y]=proj(lot.coords.lon,lot.coords.lat,lon0,lat0);ents+=`0\nCIRCLE\n8\nTEXTO\n10\n${n(x)}\n20\n${n(y)}\n30\n0.0\n40\n2.5\n`;}
@@ -271,7 +274,7 @@ async function downloadDXF(lot){
   if(!lot||!lot.predio)return;
   LX.toast('Preparando el plano…');
   const geom=geomOf(lot.predio),c=centroid(geom);let feats=[];
-  try{feats=await fetchLots(c[1],c[0]);}catch(e){console.warn('sin vecinos',e);}
+  try{feats=await fetchLots(c[1],c[0],cityOf(lot));}catch(e){console.warn('sin vecinos',e);}
   const dxf=buildDXF(lot,feats);if(!dxf){LX.toast('El lote no tiene geometría');return;}
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([dxf],{type:'application/dxf'}));
   const filename='plano_lote_'+(lot.predio.npn||'cali').replace(/[^\w-]/g,'')+'.dxf';
@@ -283,7 +286,7 @@ async function downloadDXF(lot){
   const payload={email:to,filename,mimeType:'application/dxf',docBase64:btoa(unescape(encodeURIComponent(dxf))),
     subject:'Plano CAD del lote '+(p.npn||'')+(p.direccion?' - '+p.direccion:''),
     body:'Hola,\n\nAdjunto el plano CAD (.dxf) de la zona, con el lote resaltado, a escala real en metros, con las medidas de cada lado y el area.\n\n'+
-      'NPN: '+(p.npn||'s/d')+'\nDireccion: '+(p.direccion||'s/d')+'\nBarrio: '+(p.barrio||'s/d')+(p.comuna?' (Comuna '+p.comuna+')':'')+'\nArea: '+(p.area||'s/d')+' m2\n\n'+
+      'Ciudad: '+cityOf(lot).name+'\n'+cityOf(lot).codigo+': '+(p.npn||'s/d')+(p.direccion?'\nDireccion: '+p.direccion:'')+(p.barrio?'\nBarrio: '+p.barrio:'')+'\nArea: '+(p.area||'s/d')+' m2\n\n'+
       'El .dxf se abre con AutoCAD, QGIS o LibreCAD. Gmail no lo previsualiza: descargalo y abrelo con un programa CAD.\n\n- Enviado desde LandX · landx.lifecity.com.co'};
   LX.toast('Plano descargado. Enviando copia a '+to+'…');
   try{await fetch(url,{method:'POST',body:JSON.stringify(payload)});LX.toast('Plano descargado y enviado a '+to+' ✓');}
@@ -293,47 +296,41 @@ async function downloadDXF(lot){
 
 /* ===================== Masa normativa 3D (Pro) ===================== */
 let THREE,OrbitControls,renderer,scene,camera,controls,gLot,gMasses,mounted=false;
-let LOT=null; // {lot, pts, area, edif, maxBuild, maxFloors}
+let LOT=null; // {lot, city, pts, area, norm, ic, maxBuild, maxFloors}
 let masses=[],sel=null,uidn=1;
 const PALETTE=[0xa06bff,0x4dd0e1,0xf4b942,0x6bd96b,0xff8f6b,0xff5b9c];
 
 async function openMasas(lot){
-  if(!LX.isPro()){LX.showUpgrade('La masa normativa 3D sobre el lote del catastro (POT Cali) es una función Pro.');return;}
+  if(!LX.isPro()){LX.showUpgrade('La masa normativa 3D sobre el lote del catastro es una función Pro.');return;}
   const geom=geomOf(lot.predio);if(!geom){LX.toast('El lote no tiene geometría');return;}
   $('mzModal').classList.remove('hidden');
   try{await mount();}catch(e){console.error(e);LX.toast('No se pudo cargar el visor 3D (revisa tu conexión).');return;}
   const fp=footprintOf(geom);
-  LOT={lot,pts:fp.pts,c:fp.c,area:lot.predio.area||Math.round(shoelace(fp.pts)),edif:null,maxBuild:0,maxFloors:null};
+  const city=cityOf(lot);
+  LOT={lot,city,pts:fp.pts,c:fp.c,area:lot.predio.area||Math.round(shoelace(fp.pts)),norm:null,ic:0,maxBuild:0,maxFloors:null};
+  $('mzCity').textContent=city.name;$('mzCodLbl').textContent=city.codigo.toUpperCase();$('mzIc').value='';$('mzPisosMax').value='';
   $('mzNpn').textContent=lot.predio.npn||'—';$('mzArea').textContent=fmt(LOT.area)+' m²';
   masses=[];sel=null;uidn=1;gMasses.clear();
   (lot.masas||[]).forEach(m=>{masses.push({id:uidn++,floors:+m.floors||3,floorH:+m.floorH||3,offset:+m.offset||0,baseZ:+m.baseZ||0,color:PALETTE[(uidn-2)%PALETTE.length]});});
   sel=masses[masses.length-1]||null;
   drawLot();rebuildAll();refresh();viewIso();resize();
-  // Edificabilidad POT en el punto
-  $('mzPot').innerHTML='<span class="spin"></span> Consultando edificabilidad POT…';
+  // Norma de la ciudad en el punto. Lo que el usuario haya digitado y guardado tiene prioridad.
+  $('mzPot').innerHTML='<span class="spin"></span> Consultando la norma de '+esc(city.name)+'…';
   try{
-    const d=.0006,[cx,cy]=fp.c;
-    const q={service:'WFS',version:'2.0.0',request:'GetFeature',typeNames:'pot_2014:nur_edificabilidad_icb',outputFormat:'application/json',srsName:'EPSG:4326',
-      propertyName:'icb,ica,the_geom',CQL_FILTER:`BBOX(the_geom,${cx-d},${cy-d},${cx+d},${cy+d},'EPSG:4326')`,count:3};
-    const r=await fetch(POT_OWS+'?'+Object.entries(q).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&'));const j=await r.json();
-    const f=(j.features||[])[0];
-    if(f){LOT.edif=parseEdif(f.properties.icb,f.properties.ica);
-      if(LOT.edif.mode==='index'){LOT.maxBuild=LOT.area*LOT.edif.icTotal;$('mzPot').innerHTML=`Norma POT 2014 · ICB <b>${esc(LOT.edif.icbTxt)}</b> + ICA <b>${esc(LOT.edif.icaTxt)}</b> → índice total <b>${LOT.edif.icTotal.toFixed(2)}</b> · máximo <b>${fmt(LOT.maxBuild)} m²</b> construidos.`;}
-      else if(LOT.edif.mode==='floors'){LOT.maxFloors=LOT.edif.maxPisos;$('mzPot').innerHTML=`Norma POT 2014 · edificabilidad por altura: <b>${LOT.maxFloors} pisos</b> máximo (ICB ${esc(LOT.edif.icbTxt)} · ICA ${esc(LOT.edif.icaTxt)}).`;
-        if(!masses.length){$('mzFloors').value=Math.min(LOT.maxFloors,40);$('mzvFloors').textContent=$('mzFloors').value;}}
-      else{const a=LOT.edif.icbTxt,b=LOT.edif.icaTxt;const cod=a&&b&&a!==b?a+' / '+b:(a||b||'sin dato');
-        $('mzPot').innerHTML=`Norma POT 2014: <b>${esc(cod)}</b>. Este predio se rige por una norma especial (sin índice numérico); modela con los índices de la ficha normativa.`;}
-    }else $('mzPot').textContent='El POT no reporta edificabilidad para este punto (zona sin norma cargada en IDESC).';
-  }catch(e){console.warn(e);$('mzPot').textContent='No se pudo consultar la edificabilidad POT ahora. Puedes seguir modelando.';}
-  refresh();
+    const n=await city.norm(fp.c[0],fp.c[1],LOT.area);if(!LOT||LOT.lot!==lot)return;
+    LOT.norm=n;$('mzPot').innerHTML=n.html;
+    if(n.maxBuild)$('mzIc').value=(n.maxBuild/LOT.area).toFixed(2).replace('.',',');
+    if(n.maxFloors){$('mzPisosMax').value=n.maxFloors;
+      if(!masses.length){$('mzFloors').value=Math.min(n.maxFloors,40);syncLabels();}}
+  }catch(e){console.warn(e);$('mzPot').textContent='No se pudo consultar la norma de '+city.name+' ahora. Digita abajo los valores de tu ficha normativa y sigue modelando.';}
+  const g=lot.norma||{};if(g.ic)$('mzIc').value=String(g.ic).replace('.',',');if(g.pisos)$('mzPisosMax').value=g.pisos;
+  readNorm();
 }
-function parseEdif(icb,ica){
-  const a=(icb==null?'':String(icb)).trim(),b=(ica==null?'':String(ica)).trim();
-  const asInt=s=>{const m=String(s).match(/(\d+)/);return m?parseInt(m[1]):0;};
-  const asIdx=s=>{const m=String(s).replace(',','.').match(/(\d+(?:\.\d+)?)/);return m?parseFloat(m[1]):0;};
-  if(/piso/i.test(a)||/piso/i.test(b))return {mode:'floors',maxPisos:asInt(a)+asInt(b),icbTxt:a,icaTxt:b};
-  const ic=asIdx(a)+asIdx(b);if(ic>0)return {mode:'index',icTotal:ic,icbTxt:a,icaTxt:b};
-  return {mode:'none',icbTxt:a,icaTxt:b};
+// Pasa a LOT lo que dicen los campos de norma (llenados por la ciudad o por el usuario)
+function readNorm(){
+  if(!LOT)return;
+  const ic=parseFloat(String($('mzIc').value).replace(',','.'))||0,p=parseInt($('mzPisosMax').value)||0;
+  LOT.ic=ic;LOT.maxBuild=ic>0?ic*LOT.area:0;LOT.maxFloors=p>0?p:null;refresh();
 }
 async function mount(){
   if(mounted)return;
@@ -390,12 +387,17 @@ function refresh(){
   if(!LOT)return;
   const built=Math.round(totalBuilt()),h=topOfStack();
   $('mzCount').textContent=masses.length;$('mzH').textContent=h.toFixed(1)+' m';$('mzBuilt').textContent=fmt(built);$('mzIdx').textContent=(LOT.area?built/LOT.area:0).toFixed(2);
-  const max=Math.round(LOT.maxBuild),bar=$('mzMtrBar');
-  if(max){$('mzMtrTxt').textContent=`${fmt(built)} / ${fmt(max)} m²`;bar.style.width=Math.min(100,built/max*100)+'%';bar.classList.toggle('over',built>max);
-    $('mzMtrNote').textContent=built>max?`⚠ Excede el máximo POT en ${fmt(built-max)} m²`:`✓ Dentro del POT · disponible ${fmt(max-built)} m²`;}
-  else if(LOT.maxFloors){const tf=totalFloors();$('mzMtrTxt').textContent=`${tf} / ${LOT.maxFloors} pisos`;bar.style.width=Math.min(100,tf/LOT.maxFloors*100)+'%';bar.classList.toggle('over',tf>LOT.maxFloors);
-    $('mzMtrNote').textContent=tf>LOT.maxFloors?`⚠ Excede la altura POT (${tf} de ${LOT.maxFloors} pisos)`:`✓ Dentro de la altura POT · quedan ${LOT.maxFloors-tf} piso(s)`;}
-  else{$('mzMtrTxt').textContent=`${fmt(built)} m² · sin máximo POT`;bar.style.width='0%';bar.classList.remove('over');$('mzMtrNote').textContent='';}
+  const max=Math.round(LOT.maxBuild),bar=$('mzMtrBar'),mf=LOT.maxFloors;
+  // La altura se mide en la masa más alta: dos masas lado a lado no suman pisos
+  const pisos=masses.length?Math.max(...masses.map(m=>Math.round(m.baseZ/m.floorH)+m.floors)):0;
+  const notas=[];
+  if(max){$('mzMtrTxt').textContent=`${fmt(built)} / ${fmt(max)} m²`;bar.style.width=Math.min(100,built/max*100)+'%';
+    notas.push(built>max?`⚠ Excede el índice en ${fmt(built-max)} m²`:`✓ Dentro del índice · disponible ${fmt(max-built)} m²`);}
+  else if(mf){$('mzMtrTxt').textContent=`${pisos} / ${mf} pisos`;bar.style.width=Math.min(100,pisos/mf*100)+'%';}
+  else{$('mzMtrTxt').textContent=`${fmt(built)} m² · sin máximo de norma`;bar.style.width='0%';}
+  if(mf)notas.push(pisos>mf?`⚠ Excede la altura (${pisos} de ${mf} pisos)`:`✓ Dentro de la altura · quedan ${mf-pisos} piso(s)`);
+  bar.classList.toggle('over',!!((max&&built>max)||(mf&&pisos>mf)));
+  $('mzMtrNote').textContent=notas.join(' · ');
   const list=$('mzList');
   if(!masses.length){list.innerHTML='<div class="hint" style="margin:8px 0">Sin masas. Ajusta pisos, altura y retiro, y toca «Crear masa».</div>';return;}
   list.innerHTML=masses.map((m,i)=>`<div class="mz-card${sel===m?' sel':''}" data-id="${m.id}" style="--c:#${m.color.toString(16).padStart(6,'0')}"><span class="del" data-del="${m.id}">✕</span>
@@ -409,7 +411,8 @@ function viewTop(){const s=Math.max(60,Math.sqrt(LOT.area)*2.6);camera.position.
 const studyData=()=>masses.map(m=>({floors:m.floors,floorH:+m.floorH.toFixed(2),offset:m.offset,baseZ:+m.baseZ.toFixed(2)}));
 async function saveStudy(){
   if(!LOT)return;const b=$('mzSave');b.disabled=true;
-  try{await LX.patchCurrent({masas:studyData()});LX.toast('Masa guardada en el lote ✓');onDetail(LX.current);}
+  const norma={ic:LOT.ic||0,pisos:LOT.maxFloors||0};
+  try{await LX.patchCurrent({masas:studyData(),norma});LX.toast('Masa guardada en el lote ✓');onDetail(LX.current);}
   catch(e){console.error(e);LX.toast('No se pudo guardar.');}
   finally{b.disabled=false;}
 }
@@ -437,23 +440,26 @@ function exportSheet(){
     .foot{border-top:2px solid #1a2230;display:flex;justify-content:space-between;padding:8px 16px;font-size:10px;color:#555}
     .noprint{position:fixed;top:10px;right:10px}.noprint button{background:#2f9e6e;color:#fff;border:0;padding:10px 16px;font-weight:700;cursor:pointer;border-radius:6px}@media print{.noprint{display:none}body{background:#fff;padding:0}}
   </style></head><body><div class="noprint"><button onclick="window.print()">Imprimir / Guardar PDF</button></div><div class="sheet">
-  <div class="head"><div><h1>${esc((p.direccion||'ESTUDIO DE MASA').toUpperCase())}</h1><div class="s">${esc(p.barrio)||''}${p.comuna?' · Comuna '+esc(p.comuna):''} · Cali</div></div>
-    <div class="r"><div class="brand">LandX</div><div>NPN ${esc(p.npn)||'—'}</div><div>${new Date().toLocaleString('es-CO')}</div></div></div>
+  <div class="head"><div><h1>${esc((p.direccion||'ESTUDIO DE MASA').toUpperCase())}</h1><div class="s">${esc(p.barrio)||''}${p.comuna?' · Comuna '+esc(p.comuna):''} · ${esc(LOT.city.name)}</div></div>
+    <div class="r"><div class="brand">LandX</div><div>${esc(LOT.city.codigo)} ${esc(p.npn)||'—'}</div><div>${new Date().toLocaleString('es-CO')}</div></div></div>
   <div class="grid"><div class="views">
     <div class="view"><span class="lbl">ISOMÉTRICA</span><img src="${iso}"></div><div class="view"><span class="lbl">PLANTA</span><img src="${top}"></div>
     <div class="view"><span class="lbl">ALZADO</span><img src="${front}"></div>
     <div class="view" style="background:#fff;padding:10px;align-items:flex-start"><div style="width:100%"><div class="lbl" style="position:static;display:inline-block;margin-bottom:8px">CUADRO DE MASAS</div>
       <table><tr><th>#</th><th>Pisos</th><th>h piso</th><th>Alt (m)</th><th>Retiro</th><th>Huella m²</th><th>Constr. m²</th></tr>${rows}</table></div></div></div>
-   <div class="info"><h2>Predio</h2><div class="kv"><span class="k">Dirección</span><span class="v">${esc(p.direccion)||'—'}</span><span class="k">Barrio</span><span class="v">${esc(p.barrio)||'—'}</span><span class="k">Área lote</span><span class="v">${fmt(LOT.area)} m²</span></div>
-    <h2>Normativa POT 2014</h2><div class="kv"><span class="k">ICB</span><span class="v">${esc(LOT.edif?LOT.edif.icbTxt:'—')||'—'}</span><span class="k">ICA</span><span class="v">${esc(LOT.edif?LOT.edif.icaTxt:'—')||'—'}</span><span class="k">Máximo</span><span class="v">${max?fmt(max)+' m²':(LOT.maxFloors?LOT.maxFloors+' pisos':'—')}</span></div>
+   <div class="info"><h2>Predio</h2><div class="kv">${p.direccion?`<span class="k">Dirección</span><span class="v">${esc(p.direccion)}</span>`:''}${p.barrio?`<span class="k">Barrio</span><span class="v">${esc(p.barrio)}</span>`:''}<span class="k">Área lote</span><span class="v">${fmt(LOT.area)} m²</span></div>
+    <h2>Normativa · ${esc(LOT.city.norma)}</h2><div class="kv">${LOT.norm&&LOT.norm.icb?`<span class="k">Norma</span><span class="v">${esc(LOT.norm.icb)}</span>`:''}
+      <span class="k">Índice de construcción</span><span class="v">${LOT.ic?LOT.ic.toFixed(2).replace('.',','):'—'}</span><span class="k">Pisos máximos</span><span class="v">${LOT.maxFloors||'—'}</span>
+      <span class="k">Edificabilidad máx.</span><span class="v">${max?fmt(max)+' m²':'—'}</span></div>
     <h2>Propuesta</h2><div class="kv"><span class="k">Masas</span><span class="v">${masses.length}</span><span class="k">Altura</span><span class="v">${topOfStack().toFixed(1)} m</span><span class="k">Área construida</span><span class="v">${fmt(built)} m²</span><span class="k">Índice logrado</span><span class="v">${(LOT.area?built/LOT.area:0).toFixed(2)}</span>
-    <span class="k">vs. máximo POT</span><span class="v" style="color:${max&&built>max?'#c00':'#2a7'}">${max?(built>max?'+'+fmt(built-max)+' m² (excede)':fmt(max-built)+' m² disponibles'):'—'}</span></div></div></div>
-  <div class="foot"><span>LandX · landx.lifecity.com.co</span><span>Catastro IDESC Cali · POT 2014 · Lámina generada automáticamente</span></div></div></body></html>`;
+    <span class="k">vs. máximo de norma</span><span class="v" style="color:${max&&built>max?'#c00':'#2a7'}">${max?(built>max?'+'+fmt(built-max)+' m² (excede)':fmt(max-built)+' m² disponibles'):'—'}</span></div></div></div>
+  <div class="foot"><span>LandX · landx.lifecity.com.co</span><span>${esc(LOT.city.fuente)} · Lámina generada automáticamente</span></div></div></body></html>`;
   const w=window.open('','_blank');if(!w){LX.toast('Permite ventanas emergentes para ver la lámina.');return;}
   w.document.write(html);w.document.close();
 }
 function bindMasas(){
   ['mzFloors','mzFh','mzOff'].forEach(id=>$(id).addEventListener('input',()=>{syncLabels();if(sel){sel.floors=+$('mzFloors').value;sel.floorH=+$('mzFh').value;sel.offset=+$('mzOff').value;rebuildAll();refresh();}}));
+  ['mzIc','mzPisosMax'].forEach(id=>$(id).addEventListener('input',readNorm));
   $('mzAdd').onclick=addMass;$('mzTop').onclick=viewTop;$('mzIso').onclick=viewIso;$('mzSave').onclick=saveStudy;$('mzSheet').onclick=exportSheet;
   $('mzDxf').onclick=()=>{const lot=Object.assign({},LOT.lot,{masas:studyData()});downloadDXF(lot);};
 }
